@@ -70,6 +70,27 @@ test.describe('スワイプでステータス変更', () => {
     await expect(row(page, '素早く')).toHaveAttribute('data-status', 'todo');
   });
 
+  test('処理の遅い端末でも、短いスワイプは元の位置に戻る', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'CPU throttling uses the Chrome DevTools Protocol');
+    await login(page);
+    await addTask(page, '遅い端末');
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 8 });
+    const swipeEl = row(page, '遅い端末').getByTestId('task-swipe');
+    const box = (await swipeEl.boundingBox())!;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + 90, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 130, y, { steps: 2 });
+    await page.mouse.up();
+    await expect
+      .poll(() => swipeEl.evaluate((el) => getComputedStyle(el).transform), { timeout: 8000 })
+      .toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    await expect(page).toHaveURL(/\/$/);
+    await expect(row(page, '遅い端末')).toHaveAttribute('data-status', 'todo');
+  });
+
   test('タッチのフリックで完了にできる（Chromium実タッチ入力）', async ({ page, browserName, isMobile }) => {
     test.skip(browserName !== 'chromium' || !isMobile, 'CDP touch input is Chromium-only');
     await login(page);

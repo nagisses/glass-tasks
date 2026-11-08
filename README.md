@@ -51,11 +51,11 @@ Cloudflare Workers（API・配信）＋ D1（データベース）＋ Workers AI
 
 ```mermaid
 flowchart LR
-  B[ブラウザ / スマホ] -- "HTML/JS/CSS" --> A[Workers Static Assets]
-  B -- "/api/* /auth/*" --> W[Cloudflare Worker (Hono)]
-  W --> D[(D1: users, sessions, lists, tasks, subtasks)]
-  W --> AI[Workers AI: Llama 3.3 70B]
-  W -- OAuth 2.0 + PKCE --> G[Google]
+  B["ブラウザ / スマホ"] -- "HTML/JS/CSS" --> A["Workers Static Assets"]
+  B -- "/api/* と /auth/*" --> W["Cloudflare Worker（Hono）"]
+  W --> D[("D1: users / sessions / lists / tasks / subtasks")]
+  W --> AI["Workers AI: Llama 3.3 70B"]
+  W -- "OAuth 2.0 + PKCE" --> G["Google"]
 ```
 
 ### ディレクトリ

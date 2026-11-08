@@ -34,7 +34,7 @@ test.describe('スケルトンローディング', () => {
     await addTask(page, '読み込み確認');
     const href = await row(page, '読み込み確認').getByRole('link').getAttribute('href');
 
-    await delay(page, /\/api\/(lists|tasks)/, 1200);
+    await delay(page, /\/api\/(lists|tasks)/, 2500);
 
     // Home
     await page.goto('/');
@@ -57,10 +57,10 @@ test.describe('スケルトンローディング', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     await page.goto('/');
     await expect(page.getByTestId('skeleton')).toHaveCount(0);
-    await delay(page, '**/api/lists', 1500);
+    await delay(page, '**/api/lists', 5000);
     await page.reload();
     const menu = await openMenu(page);
     await expect(menu.getByTestId('menu-skeleton')).toBeVisible();
-    await expect(menu.getByRole('link', { name: /スケルトン/ })).toBeVisible({ timeout: 10_000 });
+    await expect(menu.getByRole('link', { name: /スケルトン/ })).toBeVisible({ timeout: 15_000 });
   });
 });

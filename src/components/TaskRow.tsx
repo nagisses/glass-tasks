@@ -53,7 +53,7 @@ export const TaskRow = forwardRef<HTMLLIElement, Props>(function TaskRow({ task,
   const armedRef = useRef<typeof armed>(null);
   // Tracked synchronously from raw pointer events: Motion reports drag start a frame late,
   // so a very fast swipe could otherwise end with a click that opens the task.
-  const press = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const press = useRef<{ x: number; y: number; moved: boolean; settled: boolean } | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
 
   useMotionValueEvent(x, 'change', (v) => {
@@ -76,6 +76,11 @@ export const TaskRow = forwardRef<HTMLLIElement, Props>(function TaskRow({ task,
   const href = `/lists/${task.listId}/tasks/${task.id}`;
 
   const settle = (_: unknown, info: { velocity: { x: number } }) => {
+    // Runs once per press: either from Motion's onDragEnd or from the pointer-up fallback below
+    if (press.current) {
+      if (press.current.settled) return;
+      press.current.settled = true;
+    }
     const v = x.get();
     const vx = info.velocity.x;
     const width = rowRef.current?.offsetWidth ?? 360;
@@ -122,7 +127,20 @@ export const TaskRow = forwardRef<HTMLLIElement, Props>(function TaskRow({ task,
         dragMomentum={false}
         onDragEnd={settle}
         onPointerDown={(e) => {
-          press.current = { x: e.clientX, y: e.clientY, moved: false };
+          press.current = { x: e.clientX, y: e.clientY, moved: false, settled: false };
+          const current = press.current;
+          // Fallback: if a gesture ends too fast for Motion to report drag end, still settle the row
+          const onUp = () => {
+            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointercancel', onUp);
+            setTimeout(() => {
+              if (press.current === current && !current.settled && x.get() !== 0 && !x.isAnimating()) {
+                settle(undefined, { velocity: { x: 0 } });
+              }
+            }, 160);
+          };
+          window.addEventListener('pointerup', onUp);
+          window.addEventListener('pointercancel', onUp);
         }}
         onPointerMove={(e) => {
           const p = press.current;
