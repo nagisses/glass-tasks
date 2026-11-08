@@ -56,6 +56,20 @@ test.describe('スワイプでステータス変更', () => {
     expect(['none', 'matrix(1, 0, 0, 1, 0, 0)']).toContain(transform);
   });
 
+  test('一瞬で終わる短いスワイプでも詳細画面は開かない', async ({ page }) => {
+    await login(page);
+    await addTask(page, '素早く');
+    const box = (await row(page, '素早く').getByTestId('task-swipe').boundingBox())!;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + 90, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 130, y, { steps: 2 });
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(row(page, '素早く')).toHaveAttribute('data-status', 'todo');
+  });
+
   test('タッチのフリックで完了にできる（Chromium実タッチ入力）', async ({ page, browserName, isMobile }) => {
     test.skip(browserName !== 'chromium' || !isMobile, 'CDP touch input is Chromium-only');
     await login(page);

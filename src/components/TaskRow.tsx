@@ -51,7 +51,9 @@ export const TaskRow = forwardRef<HTMLLIElement, Props>(function TaskRow({ task,
   const x = useMotionValue(0);
   const [armed, setArmed] = useState<'advance' | 'delete' | null>(null);
   const armedRef = useRef<typeof armed>(null);
-  const dragged = useRef(false);
+  // Tracked synchronously from raw pointer events: Motion reports drag start a frame late,
+  // so a very fast swipe could otherwise end with a click that opens the task.
+  const press = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
 
   useMotionValueEvent(x, 'change', (v) => {
@@ -77,7 +79,6 @@ export const TaskRow = forwardRef<HTMLLIElement, Props>(function TaskRow({ task,
     const v = x.get();
     const vx = info.velocity.x;
     const width = rowRef.current?.offsetWidth ?? 360;
-    setTimeout(() => (dragged.current = false), 0);
     if (v > THRESHOLD || (vx > FLICK_VELOCITY && v > FLICK_MIN)) {
       animate(x, width, { duration: 0.2, ease: [0.4, 0, 1, 1] }).then(() => onAdvance(task));
     } else if (v < -THRESHOLD || (vx < -FLICK_VELOCITY && v < -FLICK_MIN)) {
@@ -119,10 +120,16 @@ export const TaskRow = forwardRef<HTMLLIElement, Props>(function TaskRow({ task,
         drag="x"
         dragDirectionLock
         dragMomentum={false}
-        onDragStart={() => (dragged.current = true)}
         onDragEnd={settle}
+        onPointerDown={(e) => {
+          press.current = { x: e.clientX, y: e.clientY, moved: false };
+        }}
+        onPointerMove={(e) => {
+          const p = press.current;
+          if (p && !p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 6) p.moved = true;
+        }}
         onClickCapture={(e) => {
-          if (dragged.current) {
+          if (press.current?.moved) {
             e.preventDefault();
             e.stopPropagation();
           }
