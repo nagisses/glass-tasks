@@ -49,11 +49,14 @@ test.describe('スワイプでステータス変更', () => {
     await login(page);
     await addTask(page, 'ちょっとだけ');
     await swipe(page, row(page, 'ちょっとだけ'), 40);
-    await page.waitForTimeout(500);
+    // The snap-back is animated; slow CI renderers may need a while to finish it
+    await expect
+      .poll(() => row(page, 'ちょっとだけ').getByTestId('task-swipe').evaluate((el) => getComputedStyle(el).transform), {
+        timeout: 8000,
+      })
+      .toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
     await expect(row(page, 'ちょっとだけ')).toHaveAttribute('data-status', 'todo');
     await expect(page).toHaveURL(/\/$/);
-    const transform = await row(page, 'ちょっとだけ').getByTestId('task-swipe').evaluate((el) => getComputedStyle(el).transform);
-    expect(['none', 'matrix(1, 0, 0, 1, 0, 0)']).toContain(transform);
   });
 
   test('一瞬で終わる短いスワイプでも詳細画面は開かない', async ({ page }) => {
