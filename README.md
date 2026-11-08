@@ -1,6 +1,6 @@
 # Glass Tasks
 
-白基調の控えめな Liquid Glass UI で作った、モバイルファーストのタスク管理 Web アプリです。
+白基調の Liquid Glass UI で作った、モバイルファーストのタスク管理 Web アプリです。
 Cloudflare Workers（API・配信）＋ D1（データベース）＋ Workers AI（サブタスク分解）＋ Gemini（自然文からのタスク追加）で動き、ログインは Google 認証のみです。
 
 | ホーム | スワイプ | タスク詳細 | メニュー | 読み込み中 |
