@@ -283,3 +283,19 @@ export function useDeleteList() {
 export function useBreakdown() {
   return useMutation({ mutationFn: (taskId: string) => api.breakdown(taskId) });
 }
+
+/** Gemini quick add: the server parses free text into title / due date / priority and creates the task. */
+export function useAiQuickAdd() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { text: string; listId?: string }) => {
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return api.aiQuickAdd({ ...v, today });
+    },
+    onSuccess: ({ task }) => {
+      patchTaskCaches(qc, (tasks, key) => (key[1] === 'all' || key[1] === task.listId ? [task, ...tasks] : tasks));
+    },
+    onSettled: () => invalidateAll(qc),
+  });
+}

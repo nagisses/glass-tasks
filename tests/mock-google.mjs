@@ -102,6 +102,41 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { sub, email: t.email, email_verified: true, name: t.name, picture: '' });
   }
 
+  // Mock Gemini generateContent (structured JSON output)
+  const gem = url.pathname.match(/^\/gemini\/v1beta\/models\/([^/:]+):generateContent$/);
+  if (req.method === 'POST' && gem) {
+    if (req.headers['x-goog-api-key'] !== 'test-gemini-key') return send(res, 403, { error: { message: 'API key not valid' } });
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    const body = JSON.parse(raw || '{}');
+    const cfg = body.generationConfig || {};
+    if (cfg.responseMimeType !== 'application/json' || !cfg.responseJsonSchema) {
+      return send(res, 400, { error: { message: 'structured output config missing' } });
+    }
+    const text = body.contents?.[0]?.parts?.[0]?.text || '';
+    if (text.includes('失敗')) return send(res, 500, { error: { message: 'internal' } });
+    const system = body.systemInstruction?.parts?.[0]?.text || '';
+    const today = (system.match(/今日は (\d{4}-\d{2}-\d{2})/) || [])[1];
+    const shift = (days) => {
+      const d = new Date(`${today}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+    let dueDate = null;
+    if (text.includes('明後日')) dueDate = shift(2);
+    else if (text.includes('明日')) dueDate = shift(1);
+    else if (text.includes('今日')) dueDate = shift(0);
+    const priority = /急ぎ|至急|重要|大事/.test(text) ? 'high' : /いつか|余裕/.test(text) ? 'low' : 'medium';
+    const title = text
+      .replace(/明後日|明日|今日|急ぎ|至急|重要|大事|いつか|余裕があれば/g, '')
+      .replace(/^\s*に\s*/, '')
+      .trim();
+    return send(res, 200, {
+      candidates: [{ content: { role: 'model', parts: [{ text: JSON.stringify({ title, dueDate, priority }) }] }, finishReason: 'STOP' }],
+      modelVersion: gem[1],
+    });
+  }
+
   if (url.pathname === '/health') return send(res, 200, { ok: true });
   send(res, 404, { error: 'not_found' });
 });

@@ -1,7 +1,7 @@
 # Glass Tasks
 
-白基調の Liquid Glass UI で作った、モバイルファーストのタスク管理 Web アプリです。
-Cloudflare Workers（API・配信）＋ D1（データベース）＋ Workers AI（サブタスク分解）で動き、ログインは Google 認証のみです。
+白基調の控えめな Liquid Glass UI で作った、モバイルファーストのタスク管理 Web アプリです。
+Cloudflare Workers（API・配信）＋ D1（データベース）＋ Workers AI（サブタスク分解）＋ Gemini（自然文からのタスク追加）で動き、ログインは Google 認証のみです。
 
 | ホーム | スワイプ | タスク詳細 | メニュー | 読み込み中 |
 | --- | --- | --- | --- | --- |
@@ -11,6 +11,7 @@ Cloudflare Workers（API・配信）＋ D1（データベース）＋ Workers AI
 
 - **即時入力**: 画面下の入力欄は常に表示。JS の読み込み前（静的 HTML の段階）から入力でき、起動後に引き継がれます。PC では起動時に自動フォーカス、`/` か `n` キーでもフォーカス。Enter で連続追加でき、日本語変換確定の Enter では送信しません。
 - **スワイプ操作**: タスクを右にスワイプ → 次のステータス（未着手 → 進行中 → 完了 → 未着手）、左にスワイプ → 削除。どちらも「元に戻す」付きの通知が出ます。丸いステータスボタンでも同じ操作ができます。
+- **Gemini で追加**: 入力欄に「明日 歯医者に電話 急ぎ」のように書いて ✨ ボタンを押すと、Gemini がタスク名・期限（日付に変換）・優先度に分けて登録します。通常の Enter 追加は AI を待たず即時です。
 - **AI でサブタスク分解**: タスク詳細の「AIで分解」で Workers AI が 3〜6 個のサブタスクを提案。選んだものだけ追加できます。
 - **全画面スケルトン**: 起動直後（静的 HTML）、セッション確認、ホーム、リスト、タスク詳細、メニュー、AI 提案のすべてに、実際のレイアウトと同じ形のスケルトンを表示します。
 - **アニメーション**: ページ遷移（階層の深さに応じて左右にスライド）、リストの増減、スワイプ、チェックの描画、アコーディオン開閉、モーダル/メニューのばね動作、ラジオの選択インジケーター移動、プルダウンの展開、カルーセルの拡大縮小、通知の出入り、背景の光の揺らぎ。OS の「視差効果を減らす」設定に従います。
@@ -36,6 +37,7 @@ Cloudflare Workers（API・配信）＋ D1（データベース）＋ Workers AI
 | 画面配信 | **Workers Static Assets** | ビルドした画面ファイルを Worker と同じデプロイで配信できる。SPA のフォールバック（どの URL でも index.html を返す）を設定だけで実現でき、`/api/*` と `/auth/*` だけ Worker を通すので静的ファイルは高速 |
 | データベース | **Cloudflare D1** | Workers から直接使える SQLite。ユーザー・リスト・タスク・サブタスクの関係データを外部キーや集計（ステータス別件数）で素直に扱える。セッション削除（ログアウト）が即時に反映される強い一貫性が必要なため、結果整合の KV ではなく D1 にセッションも保存 |
 | AI | **Cloudflare Workers AI**（`@cf/meta/llama-3.3-70b-instruct-fp8-fast`） | 要件どおり Cloudflare 内で完結し、API キー管理が不要（Worker のバインディングで呼べる）。このモデルは JSON モード（スキーマ指定の出力）対応で、日本語の短い指示文も安定して生成できるため、提案をそのまま安全に解析できる。非推奨予定も出ていない（2026-11 時点）。モデルは `AI_MODEL` 変数で差し替え可能 |
+| AI（自然文の解析） | **Gemini API**（`gemini-3.5-flash-lite`） | 「明日」「来週月曜」などの相対的な日付を今日の日付から正しく解釈でき、JSON スキーマ指定の構造化出力で結果を安全に取り込める。Flash-Lite は応答が速く安価で、入力欄の操作感を損なわない。安定版で終了予定なし（2026-11 時点）、AI Studio の無料枠でも使える。Workers AI（分解）と役割を分け、得意な処理にそれぞれを使う。モデルは `GEMINI_MODEL` で変更可能 |
 | API フレームワーク | **Hono** | Workers 向けに作られた軽量フレームワーク。ルーティング・Cookie・セキュリティヘッダーが揃っていて依存が少なく、起動が速い |
 | 認証 | **Google OAuth 2.0 / OpenID Connect（自前実装）** | 要件の「Google 認証のみ」。Web Crypto だけで実装でき追加ライブラリ不要。state（CSRF 対策）と PKCE（S256）を必須にし、セッション Cookie は HttpOnly・SameSite=Lax・HTTPS では Secure。DB にはトークンの SHA-256 だけを保存。パスワードは一切扱わない |
 | 画面 | **React 19 ＋ TypeScript** | 部品（モーダル・カルーセル等）を再利用しやすく、型で API とのずれを防げる。採用例と情報量が最も多い |
@@ -55,17 +57,18 @@ flowchart LR
   B -- "/api/* と /auth/*" --> W["Cloudflare Worker（Hono）"]
   W --> D[("D1: users / sessions / lists / tasks / subtasks")]
   W --> AI["Workers AI: Llama 3.3 70B"]
+  W --> GM["Gemini API: 3.5 Flash-Lite"]
   W -- "OAuth 2.0 + PKCE" --> G["Google"]
 ```
 
 ### ディレクトリ
 
 ```
-worker/        Cloudflare Worker（Hono）: auth.ts（Google 認証）, api.ts（REST API）, ai.ts（Workers AI）
+worker/        Cloudflare Worker（Hono）: auth.ts（Google 認証）, api.ts（REST API）, ai.ts（Workers AI）, gemini.ts（Gemini）
 src/           画面（React）: components/（UI 部品）, pages/（各画面）, hooks.ts（データ取得）
 migrations/    D1 のテーブル定義
 public/        カバー画像・アイコン・PWA マニフェスト
-tests/e2e/     Playwright のテスト, tests/mock-google.mjs（テスト用の Google OAuth 模擬サーバー）
+tests/e2e/     Playwright のテスト, tests/mock-google.mjs（テスト用の Google OAuth・Gemini 模擬サーバー）
 ```
 
 ## セキュリティ
@@ -85,9 +88,9 @@ tests/e2e/     Playwright のテスト, tests/mock-google.mjs（テスト用の 
 | `mobile-safari` | WebKit（iPhone 15 相当） | Safari エンジンでの表示・操作 |
 | `desktop-chrome` | Chromium（1280×860） | キーボード操作・自動フォーカス |
 
-テストは本物と同じ認証フロー（リダイレクト → 同意 → コールバック → トークン交換 → ユーザー情報）を、ローカルの Google 模擬サーバー（`tests/mock-google.mjs`）に向けて実行します。模擬サーバーもクライアント認証・redirect_uri・PKCE を検証します。AI はテスト環境だけ決まった応答を返すモードで動かします（本番は Workers AI）。
+テストは本物と同じ認証フロー（リダイレクト → 同意 → コールバック → トークン交換 → ユーザー情報）を、ローカルの Google 模擬サーバー（`tests/mock-google.mjs`）に向けて実行します。模擬サーバーもクライアント認証・redirect_uri・PKCE を検証します。Workers AI はテスト環境だけ決まった応答を返すモードで、Gemini は同じ模擬サーバー上の generateContent 互換エンドポイント（API キーのヘッダーと構造化出力の指定を検証）に向けて動かします。
 
-主な検証項目: Google ログイン/ログアウト/キャンセル/不正な state、未認証・別オリジンの拒否、ユーザー間のデータ分離、即時入力（自動フォーカス・連続追加・下書き保持・JS 読み込み前の入力の引き継ぎ・リスト読み込み前の追加先）、スワイプ（右/左/短い/タッチ/元に戻す/保存）、ハンバーガーメニュー、パンくず、カルーセル、モーダル（背面操作不可・フォーカス閉じ込め・Esc/背景で閉じる）、アコーディオン、ラジオ、プルダウン（マウス/キーボード）、AI 分解（成功・失敗・再試行）、全画面のスケルトン、横はみ出しなし、宣伝文句なし。
+主な検証項目: Google ログイン/ログアウト/キャンセル/不正な state、未認証・別オリジンの拒否、ユーザー間のデータ分離、即時入力（自動フォーカス・連続追加・下書き保持・JS 読み込み前の入力の引き継ぎ・リスト読み込み前の追加先）、スワイプ（右/左/短い/タッチ/元に戻す/保存）、ハンバーガーメニュー、パンくず、カルーセル、モーダル（背面操作不可・フォーカス閉じ込め・Esc/背景で閉じる）、アコーディオン、ラジオ、プルダウン（マウス/キーボード）、AI 分解（成功・失敗・再試行）、Gemini で追加（期限・優先度の読み取り、表示中リストへの追加、失敗時に入力を残す）、全画面のスケルトン、横はみ出しなし、宣伝文句なし。
 
 ```bash
 npm ci
@@ -114,9 +117,10 @@ Google Cloud Console の OAuth クライアントに、承認済みリダイレ�
    npx wrangler d1 create glass-tasks
    ```
 3. Google Cloud Console で OAuth クライアント（ウェブアプリケーション）を作成し、リダイレクト URI に `https://<あなたのWorker>.workers.dev/auth/callback` を登録
-4. `wrangler.jsonc` の `GOOGLE_CLIENT_ID` を設定し、シークレットを登録
+4. `wrangler.jsonc` の `GOOGLE_CLIENT_ID` を設定し、シークレットを登録（Gemini のキーは [Google AI Studio](https://aistudio.google.com/apikey) で無料発行）
    ```bash
    npx wrangler secret put GOOGLE_CLIENT_SECRET
+   npx wrangler secret put GEMINI_API_KEY
    ```
 5. デプロイ（ビルド → D1 マイグレーション → 公開）
    ```bash

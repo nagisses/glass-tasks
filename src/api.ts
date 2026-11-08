@@ -92,5 +92,7 @@ export const api = {
   updateSubtask: (id: string, b: { title?: string; done?: boolean }) => request('PATCH', `/api/subtasks/${id}`, b),
   deleteSubtask: (id: string) => request('DELETE', `/api/subtasks/${id}`),
 
+  aiQuickAdd: (b: { text: string; listId?: string; today: string }) =>
+    request<{ task: Task }>('POST', '/api/ai/quick-add', b),
   breakdown: (taskId: string) => request<{ suggestions: string[] }>('POST', '/api/ai/breakdown', { taskId }),
 };

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { AiError, breakdownTask } from './ai';
 import { requireUser } from './auth';
+import { GeminiError, parseWithGemini } from './gemini';
 import type { AppEnv, Priority, Status } from './types';
 
 const STATUSES: Status[] = ['todo', 'doing', 'done'];
@@ -159,6 +160,10 @@ api.use('*', requireUser);
 api.onError((err, c) => {
   if (err instanceof BadRequest) return c.json({ error: err.message }, 400);
   if (err instanceof AiError) return c.json({ error: 'ai_unavailable' }, 502);
+  if (err instanceof GeminiError) {
+    console.error(err.message);
+    return c.json({ error: err.notConfigured ? 'gemini_not_configured' : 'gemini_unavailable' }, err.notConfigured ? 503 : 502);
+  }
   console.error(err);
   return c.json({ error: 'internal' }, 500);
 });
@@ -443,4 +448,31 @@ api.post('/ai/breakdown', async (c) => {
   if (!task) return c.json({ error: 'not_found' }, 404);
   const suggestions = await breakdownTask(c.env, task.title, task.note.slice(0, 1000));
   return c.json({ suggestions });
+});
+
+// Natural-language quick add with Gemini: "明日15時に歯医者 急ぎ" → title + due date + priority
+api.post('/ai/quick-add', async (c) => {
+  const user = c.get('user');
+  const b = await body(c);
+  const input = text(b.text, 'text', 300);
+  const today = typeof b.today === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.today) ? b.today : new Date().toISOString().slice(0, 10);
+  const weekday = '日月火水木金土'[new Date(`${today}T00:00:00Z`).getUTCDay()];
+  let listId: string;
+  if (b.listId) {
+    if (typeof b.listId !== 'string' || !(await ownsList(c.env.DB, user.id, b.listId))) throw new BadRequest('listId invalid');
+    listId = b.listId;
+  } else {
+    listId = await inboxId(c.env.DB, user.id);
+  }
+  const parsed = await parseWithGemini(c.env, input, today, weekday);
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  await c.env.DB.prepare(
+    `INSERT INTO tasks (id, user_id, list_id, title, note, status, priority, due_date, created_at, updated_at)
+     VALUES (?, ?, ?, ?, '', 'todo', ?, ?, ?, ?)`,
+  )
+    .bind(id, user.id, listId, parsed.title, parsed.priority, parsed.dueDate, now, now)
+    .run();
+  const row = await getTask(c.env.DB, user.id, id);
+  return c.json({ task: toTask(row!) }, 201);
 });

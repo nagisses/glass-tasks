@@ -3,3 +3,5 @@ GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=xxxxxxxx
 # The Vite dev server proxies /api and /auth, so tell the Worker its public origin
 APP_ORIGIN=http://localhost:5173
+# Gemini API key from Google AI Studio (for "AIで追加")
+GEMINI_API_KEY=xxxxxxxx

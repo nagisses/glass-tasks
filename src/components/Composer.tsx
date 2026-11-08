@@ -2,10 +2,11 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { COVER_TINT } from '../format';
-import { useCreateTask, useLists } from '../hooks';
+import { ApiError } from '../api';
+import { useAiQuickAdd, useCreateTask, useLists } from '../hooks';
 import { load, save } from '../storage';
 import { Dropdown } from './Dropdown';
-import { ArrowUp } from './Icons';
+import { ArrowUp, Sparkles } from './Icons';
 import { useToast } from './Toast';
 
 const DRAFT_KEY = 'gt.draft';
@@ -21,6 +22,7 @@ interface Props {
 export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
   const lists = useLists();
   const create = useCreateTask();
+  const aiAdd = useAiQuickAdd();
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState(() => initialDraft || load<string>(DRAFT_KEY, ''));
@@ -62,6 +64,25 @@ export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
     );
     setText('');
     inputRef.current?.focus({ preventScroll: true });
+  };
+
+  const submitWithAi = () => {
+    const input = text.trim();
+    if (!input || aiAdd.isPending) return;
+    aiAdd.mutate(
+      { text: input.slice(0, 300), listId },
+      {
+        onSuccess: () => {
+          setText('');
+          toast({ message: 'AIで追加しました' });
+        },
+        onError: (e) =>
+          toast({
+            message: e instanceof ApiError && e.status === 503 ? 'Geminiが設定されていません' : 'AIで追加できませんでした',
+            tone: 'error',
+          }),
+      },
+    );
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -109,13 +130,32 @@ export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
-        maxLength={200}
+        readOnly={aiAdd.isPending}
+        maxLength={300}
         autoComplete="off"
         enterKeyHint="done"
       />
       <AnimatePresence>
         {text.trim() && (
           <motion.button
+            key="ai"
+            type="button"
+            className={`composer-ai ${aiAdd.isPending ? 'is-pending' : ''}`}
+            aria-label="AIで追加"
+            aria-busy={aiAdd.isPending || undefined}
+            onClick={submitWithAi}
+            initial={{ scale: 0.4, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.4, opacity: 0 }}
+            whileTap={{ scale: 0.85 }}
+            transition={{ type: 'spring', stiffness: 600, damping: 30 }}
+          >
+            <Sparkles size={18} />
+          </motion.button>
+        )}
+        {text.trim() && (
+          <motion.button
+            key="send"
             type="submit"
             className="composer-send"
             aria-label="追加"

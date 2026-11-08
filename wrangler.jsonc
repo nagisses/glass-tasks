@@ -20,6 +20,7 @@
   "ai": { "binding": "AI" },
   "vars": {
     "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "GEMINI_MODEL": "gemini-3.5-flash-lite",
     "GOOGLE_CLIENT_ID": ""
   },
   "observability": { "enabled": true },
@@ -39,6 +40,9 @@
       "vars": {
         "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
         "AI_MODE": "mock",
+        "GEMINI_MODEL": "gemini-3.5-flash-lite",
+        "GEMINI_API_KEY": "test-gemini-key",
+        "GEMINI_API_URL": "http://localhost:9999/gemini",
         "GOOGLE_CLIENT_ID": "test-client",
         "GOOGLE_CLIENT_SECRET": "test-secret",
         "GOOGLE_AUTH_URL": "http://localhost:9999/o/oauth2/v2/auth",
