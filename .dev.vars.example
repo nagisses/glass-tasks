@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `npm run dev` (never commit the real file)
+GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=xxxxxxxx
+# The Vite dev server proxies /api and /auth, so tell the Worker its public origin
+APP_ORIGIN=http://localhost:5173

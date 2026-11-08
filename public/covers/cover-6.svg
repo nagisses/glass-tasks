@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe6e8"/><stop offset="1" stop-color="#ffd1ec"/></linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="28"/></filter>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".75"/><stop offset="1" stop-color="#fff" stop-opacity=".12"/></linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".5" stop-color="#fff" stop-opacity=".2"/><stop offset="1" stop-color="#fff" stop-opacity=".7"/></linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#bg)"/>
+  <g filter="url(#blur)">
+    <circle cx="218" cy="82" r="90" fill="#ff8a97" opacity=".85"/>
+    <circle cx="126" cy="68" r="110" fill="#ffb3dd" opacity=".8"/>
+    <circle cx="46" cy="158" r="70" fill="#fff4f6" opacity=".9"/>
+  </g>
+  <g transform="rotate(10 200 120)">
+    <rect x="110" y="58" width="150" height="120" rx="34" fill="url(#glass)" stroke="url(#edge)" stroke-width="1.5"/>
+    <circle cx="261" cy="150" r="34" fill="url(#glass)" stroke="url(#edge)" stroke-width="1.5"/>
+  </g>
+  <path d="M0 40 Q200 -10 400 30 L400 0 L0 0Z" fill="#fff" opacity=".35"/>
+</svg>

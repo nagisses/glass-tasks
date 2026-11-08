@@ -1,0 +1,40 @@
+{
+  "name": "glass-tasks",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"wrangler dev --port 8787\" \"vite\"",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.worker.json --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "test:e2e": "playwright test",
+    "deploy": "vite build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+    "mock:google": "node tests/mock-google.mjs",
+    "e2e:serve": "rm -rf .wrangler/e2e && vite build && wrangler d1 migrations apply DB --local --env test --persist-to .wrangler/e2e && wrangler dev --env test --port 8788 --ip 127.0.0.1 --persist-to .wrangler/e2e"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.107.1",
+    "hono": "^4.13.17",
+    "motion": "^14.10.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "wouter": "^3.13.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261108.1",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "concurrently": "^10.0.7",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6",
+    "wrangler": "^4.158.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
