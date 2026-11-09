@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { COVER_TINT } from '../format';
 import { ApiError } from '../api';
-import { useAiQuickAdd, useCreateTask, useLists } from '../hooks';
+import { useAiQuickAdd, useCreateTask, useFeatures, useLists } from '../hooks';
 import { load, save } from '../storage';
 import { Dropdown } from './Dropdown';
 import { ArrowUp, Sparkles } from './Icons';
@@ -23,6 +23,7 @@ export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
   const lists = useLists();
   const create = useCreateTask();
   const aiAdd = useAiQuickAdd();
+  const features = useFeatures();
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState(() => initialDraft || load<string>(DRAFT_KEY, ''));
@@ -78,7 +79,12 @@ export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
         },
         onError: (e) =>
           toast({
-            message: e instanceof ApiError && e.status === 503 ? 'Geminiが設定されていません' : 'AIで追加できませんでした',
+            message:
+              e instanceof ApiError && e.status === 429
+                ? 'AIの利用上限に達しました'
+                : e instanceof ApiError && e.status === 503
+                  ? 'Geminiが設定されていません'
+                  : 'AIで追加できませんでした',
             tone: 'error',
           }),
       },
@@ -136,7 +142,7 @@ export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
         enterKeyHint="done"
       />
       <AnimatePresence>
-        {text.trim() && (
+        {features.ai && text.trim() && (
           <motion.button
             key="ai"
             type="button"

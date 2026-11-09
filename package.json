@@ -12,7 +12,8 @@
     "test:e2e": "playwright test",
     "deploy": "vite build && wrangler d1 migrations apply DB --remote && wrangler deploy",
     "mock:google": "node tests/mock-google.mjs",
-    "e2e:serve": "rm -rf .wrangler/e2e && vite build && wrangler d1 migrations apply DB --local --env test --persist-to .wrangler/e2e && wrangler dev --env test --port 8788 --ip 127.0.0.1 --persist-to .wrangler/e2e"
+    "e2e:serve": "rm -rf .wrangler/e2e && vite build && wrangler d1 migrations apply DB --local --env test --persist-to .wrangler/e2e && wrangler dev --env test --port 8788 --ip 127.0.0.1 --persist-to .wrangler/e2e",
+    "e2e:serve:guest": "rm -rf .wrangler/e2e-guest dist-guest && vite build --outDir dist-guest && wrangler d1 migrations apply DB --local --env test --persist-to .wrangler/e2e-guest && wrangler dev --env test --port 8789 --ip 127.0.0.1 --persist-to .wrangler/e2e-guest --assets dist-guest --var AUTH_MODE:guest --var AI_FEATURES:off"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.107.1",

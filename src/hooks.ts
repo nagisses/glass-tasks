@@ -13,19 +13,31 @@ export const qk = {
 
 type TaskDetail = { task: Task; subtasks: Subtask[] };
 
-export function useMe() {
+type Session = { user: import('./api').User; features: import('./api').Features } | null;
+
+function useSession<T>(select: (s: Session) => T) {
   return useQuery({
     queryKey: qk.me,
-    queryFn: async () => {
+    queryFn: async (): Promise<Session> => {
       try {
-        return (await api.me()).user;
+        return await api.me();
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) return null;
         throw e;
       }
     },
     staleTime: Infinity,
+    select,
   });
+}
+
+export function useMe() {
+  return useSession((s) => s?.user ?? null);
+}
+
+/** Feature switches sent by the server (AI can be turned off per deployment). */
+export function useFeatures() {
+  return useSession((s) => s?.features ?? { ai: false }).data ?? { ai: false };
 }
 
 export function useLists() {

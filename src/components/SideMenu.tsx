@@ -59,12 +59,15 @@ export function SideMenu({ open, onClose, user, onCreateList }: Props) {
           )}
           <span className="account-text">
             <span className="account-name">{user.name || user.email}</span>
-            <span className="account-email">{user.email}</span>
+            {user.email && <span className="account-email">{user.email}</span>}
           </span>
-          <motion.button type="button" className="btn btn-ghost" onClick={logout} whileTap={{ scale: 0.95 }}>
-            <LogOut size={17} />
-            ログアウト
-          </motion.button>
+          {/* Guests have no way back in after signing out, so they get no logout button */}
+          {!user.guest && (
+            <motion.button type="button" className="btn btn-ghost" onClick={logout} whileTap={{ scale: 0.95 }}>
+              <LogOut size={17} />
+              ログアウト
+            </motion.button>
+          )}
         </div>
       }
     >

@@ -39,5 +39,12 @@ export default defineConfig({
       timeout: 180_000,
       reuseExistingServer: !process.env.CI,
     },
+    // Same app in the public-release setup: guest mode (no sign-in) with AI features off
+    {
+      command: 'npm run e2e:serve:guest',
+      url: 'http://localhost:8789/api/health',
+      timeout: 180_000,
+      reuseExistingServer: !process.env.CI,
+    },
   ],
 });

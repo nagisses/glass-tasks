@@ -13,7 +13,15 @@ import { RadioGroup } from '../components/RadioGroup';
 import { TaskSkeleton } from '../components/Skeleton';
 import { useToast } from '../components/Toast';
 import { COVER_TINT, PRIORITY_LABEL, STATUS_LABEL } from '../format';
-import { useAddSubtasks, useDeleteSubtask, useLists, useTaskDetail, useUpdateSubtask, useUpdateTask } from '../hooks';
+import {
+  useAddSubtasks,
+  useDeleteSubtask,
+  useFeatures,
+  useLists,
+  useTaskDetail,
+  useUpdateSubtask,
+  useUpdateTask,
+} from '../hooks';
 import { useTaskActions } from '../useTaskActions';
 import { ErrorState, NotFound } from './common';
 
@@ -47,6 +55,7 @@ function TaskDetail({ task, subtasks }: { task: Task; subtasks: Subtask[] }) {
   const { remove } = useTaskActions();
   const [, navigate] = useLocation();
   const [aiOpen, setAiOpen] = useState(false);
+  const features = useFeatures();
   const [confirm, setConfirm] = useState(false);
 
   const save = (patch: Parameters<typeof update.mutate>[0]['patch']) =>
@@ -198,10 +207,12 @@ function TaskDetail({ task, subtasks }: { task: Task; subtasks: Subtask[] }) {
 
       <Accordion id="task:subtasks" title="サブタスク" badge={subtasks.length ? `${done}/${subtasks.length}` : undefined}>
         <Subtasks taskId={task.id} subtasks={subtasks} />
-        <motion.button type="button" className="btn btn-ai" onClick={() => setAiOpen(true)} whileTap={{ scale: 0.96 }}>
-          <Sparkles size={17} />
-          AIで分解
-        </motion.button>
+        {features.ai && (
+          <motion.button type="button" className="btn btn-ai" onClick={() => setAiOpen(true)} whileTap={{ scale: 0.96 }}>
+            <Sparkles size={17} />
+            AIで分解
+          </motion.button>
+        )}
       </Accordion>
 
       <Accordion id="task:note" title="メモ">
@@ -225,7 +236,7 @@ function TaskDetail({ task, subtasks }: { task: Task; subtasks: Subtask[] }) {
         タスクを削除
       </motion.button>
 
-      <AiBreakdownModal task={task} open={aiOpen} onClose={() => setAiOpen(false)} />
+      {features.ai && <AiBreakdownModal task={task} open={aiOpen} onClose={() => setAiOpen(false)} />}
       <ConfirmModal
         open={confirm}
         onClose={() => setConfirm(false)}

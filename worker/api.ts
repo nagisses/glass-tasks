@@ -10,6 +10,26 @@ const PRIORITIES: Priority[] = ['high', 'medium', 'low'];
 const COVER_COUNT = 8;
 
 class BadRequest extends Error {}
+class TooMany extends Error {}
+class AiDisabled extends Error {}
+
+const AI_DAILY_LIMIT = 50;
+
+/** Counts one AI call: per-IP burst limit plus a per-user daily cap, so open access cannot run up costs. */
+async function consumeAi(c: Context<AppEnv>) {
+  if (c.env.AI_FEATURES === 'off') throw new AiDisabled();
+  const ip = c.req.header('cf-connecting-ip') ?? 'local';
+  if (c.env.AI_LIMITER && !(await c.env.AI_LIMITER.limit({ key: ip })).success) throw new TooMany('ip');
+  const day = new Date().toISOString().slice(0, 10);
+  const row = await c.env.DB.prepare(
+    `INSERT INTO ai_usage (user_id, day, count) VALUES (?, ?, 1)
+     ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1
+     RETURNING count`,
+  )
+    .bind(c.get('user').id, day)
+    .first<{ count: number }>();
+  if ((row?.count ?? 0) > AI_DAILY_LIMIT) throw new TooMany('daily');
+}
 
 interface TaskRow {
   id: string;
@@ -159,6 +179,8 @@ api.use('*', requireUser);
 
 api.onError((err, c) => {
   if (err instanceof BadRequest) return c.json({ error: err.message }, 400);
+  if (err instanceof AiDisabled) return c.json({ error: 'ai_disabled' }, 404);
+  if (err instanceof TooMany) return c.json({ error: 'ai_limit', scope: err.message }, 429);
   if (err instanceof AiError) return c.json({ error: 'ai_unavailable' }, 502);
   if (err instanceof GeminiError) {
     console.error(err.message);
@@ -168,7 +190,9 @@ api.onError((err, c) => {
   return c.json({ error: 'internal' }, 500);
 });
 
-api.get('/me', (c) => c.json({ user: c.get('user') }));
+const aiEnabled = (c: Context<AppEnv>) => c.env.AI_FEATURES !== 'off';
+
+api.get('/me', (c) => c.json({ user: c.get('user'), features: { ai: aiEnabled(c) } }));
 
 // ---------- lists ----------
 api.get('/lists', async (c) => {
@@ -446,6 +470,7 @@ api.post('/ai/breakdown', async (c) => {
   if (typeof b.taskId !== 'string') throw new BadRequest('taskId');
   const task = await getTask(c.env.DB, user.id, b.taskId);
   if (!task) return c.json({ error: 'not_found' }, 404);
+  await consumeAi(c);
   const suggestions = await breakdownTask(c.env, task.title, task.note.slice(0, 1000));
   return c.json({ suggestions });
 });
@@ -464,6 +489,7 @@ api.post('/ai/quick-add', async (c) => {
   } else {
     listId = await inboxId(c.env.DB, user.id);
   }
+  await consumeAi(c);
   const parsed = await parseWithGemini(c.env, input, today, weekday);
   const id = crypto.randomUUID();
   const now = Date.now();

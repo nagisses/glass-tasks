@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
+import { ApiError } from '../api';
 import type { Task } from '../api';
 import { useAddSubtasks, useBreakdown } from '../hooks';
 import { Check, Sparkles } from './Icons';
@@ -70,7 +71,11 @@ export function AiBreakdownModal({ task, open, onClose }: { task: Task; open: bo
         )}
         {breakdown.isError && (
           <motion.div key="error" className="ai-error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <p role="alert">AIの提案を取得できませんでした</p>
+            <p role="alert">
+              {breakdown.error instanceof ApiError && breakdown.error.status === 429
+                ? 'AIの利用上限に達しました'
+                : 'AIの提案を取得できませんでした'}
+            </p>
             <button
               type="button"
               className="btn btn-secondary"

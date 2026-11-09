@@ -16,6 +16,13 @@ export interface Env {
   GOOGLE_AUTH_URL?: string;
   GOOGLE_TOKEN_URL?: string;
   GOOGLE_USERINFO_URL?: string;
+  /** "off" hides and disables every AI feature (Workers AI + Gemini) */
+  AI_FEATURES?: string;
+  /** "guest": no sign-in, each browser gets an anonymous account. Otherwise Google sign-in is required. */
+  AUTH_MODE?: string;
+  /** Per-IP rate limits (Workers Rate Limiting binding) */
+  AI_LIMITER?: RateLimit;
+  GUEST_LIMITER?: RateLimit;
   /** Optional public origin when the app sits behind a dev proxy */
   APP_ORIGIN?: string;
 }
@@ -25,6 +32,7 @@ export interface User {
   email: string;
   name: string;
   picture: string;
+  guest: boolean;
 }
 
 export type AppEnv = { Bindings: Env; Variables: { user: User } };

@@ -6,6 +6,12 @@ export interface User {
   email: string;
   name: string;
   picture: string;
+  /** Anonymous account (no sign-in) */
+  guest: boolean;
+}
+
+export interface Features {
+  ai: boolean;
 }
 
 export interface List {
@@ -70,7 +76,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
-  me: () => request<{ user: User }>('GET', '/api/me'),
+  me: () => request<{ user: User; features: Features }>('GET', '/api/me'),
   logout: () => request<{ ok: true }>('POST', '/auth/logout'),
 
   lists: () => request<{ lists: List[] }>('GET', '/api/lists'),
