@@ -13,7 +13,7 @@
     {
       "binding": "DB",
       "database_name": "glass-tasks",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "295eabbf-1ba8-4a83-b6e1-856411de9b2e",
       "migrations_dir": "migrations"
     }
   ],

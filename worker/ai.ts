@@ -62,7 +62,7 @@ export async function breakdownTask(env: Env, title: string, note: string): Prom
   if (!env.AI) throw new AiError('ai binding missing');
 
   const user = note ? `タスク: ${title}\nメモ: ${note}` : `タスク: ${title}`;
-  let result: { response?: unknown };
+  let result: { response?: unknown; choices?: { message?: { content?: unknown } }[] };
   try {
     result = (await env.AI.run(env.AI_MODEL as keyof AiModels, {
       messages: [
@@ -72,9 +72,10 @@ export async function breakdownTask(env: Env, title: string, note: string): Prom
       response_format: { type: 'json_schema', json_schema: SCHEMA },
       max_tokens: 512,
       temperature: 0.4,
-    } as never)) as { response?: unknown };
+    } as never)) as typeof result;
   } catch (e) {
     throw new AiError(e instanceof Error ? e.message : 'ai failed');
   }
-  return parseResponse(result?.response);
+  // JSON mode may answer in the OpenAI-style shape (choices[0].message.content) instead of `response`
+  return parseResponse(result?.response ?? result?.choices?.[0]?.message?.content);
 }
