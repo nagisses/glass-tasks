@@ -15,7 +15,7 @@ test.describe('スケルトンローディング', () => {
     await page.locator('#boot-input').fill('先に入力');
     // When the app boots, the typed text is carried over
     await expect(page.locator('.app.boot')).toHaveCount(0, { timeout: 15_000 });
-    await expect(page.getByRole('textbox', { name: 'タスクを追加' })).toHaveValue('先に入力');
+    await expect(page.getByRole('combobox', { name: 'タスクを追加' })).toHaveValue('先に入力');
   });
 
   test('セッション確認中は全体のスケルトン', async ({ page }) => {

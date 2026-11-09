@@ -1,11 +1,12 @@
 import { AnimatePresence } from 'motion/react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { List, Status, Task } from '../api';
 import { sortTasks, STATUS_LABEL } from '../format';
 import { usePrefs } from '../prefs';
 import { useTaskActions } from '../useTaskActions';
 import { Accordion } from './Accordion';
 import { StatusIcon, TaskRow } from './TaskRow';
+import { TaskSheet } from './TaskSheet';
 
 interface Props {
   tasks: Task[];
@@ -26,6 +27,10 @@ export function TaskSections({ tasks, scope, lists }: Props) {
     for (const t of sorted) g[t.status].push(t);
     return g;
   }, [tasks, prefs.sort]);
+
+  // Bottom sheet for the swipe "edit" action; follows the live task so edits show right away
+  const [sheetId, setSheetId] = useState<string | null>(null);
+  const sheetTask = tasks.find((t) => t.id === sheetId) ?? null;
 
   const statuses: Status[] = prefs.showDone ? ['todo', 'doing', 'done'] : ['todo', 'doing'];
 
@@ -53,6 +58,7 @@ export function TaskSections({ tasks, scope, lists }: Props) {
                     listName={lists ? listNames.get(t.listId) : undefined}
                     onAdvance={advance}
                     onDelete={remove}
+                    onEdit={(t) => setSheetId(t.id)}
                   />
                 ))}
               </AnimatePresence>
@@ -60,6 +66,7 @@ export function TaskSections({ tasks, scope, lists }: Props) {
           )}
         </Accordion>
       ))}
+      <TaskSheet task={sheetTask} onClose={() => setSheetId(null)} />
     </div>
   );
 }

@@ -1,22 +1,28 @@
 import { animate, motion, useMotionValue, useMotionValueEvent, useTransform } from 'motion/react';
-import { forwardRef, useRef, useState } from 'react';
+import { forwardRef, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'wouter';
 import type { Status, Task } from '../api';
 import { dueInfo, NEXT_STATUS, PRIORITY_LABEL, STATUS_LABEL } from '../format';
-import { Calendar, Check, Play, Trash, Undo } from './Icons';
+import { Calendar, Check, Play, Sliders, Trash, Undo } from './Icons';
 
-const THRESHOLD = 80;
-// A fast flick also counts, but only after a clear horizontal move (avoids accidental triggers)
-const FLICK_VELOCITY = 900;
+/** Width of the revealed buttons: one on the left (status), two on the right (edit + delete) */
+const OPEN_LEFT = 92;
+const OPEN_RIGHT = 160;
+// A fast flick to the right changes the status at once (deleting always needs a button or a long pull)
+const FLICK_VELOCITY = 500;
 const FLICK_MIN = 56;
 const SPRING = { type: 'spring', stiffness: 520, damping: 40 } as const;
+
+/** Only one row is open at a time */
+let closeOpenRow: (() => void) | null = null;
 
 interface Props {
   task: Task;
   listName?: string;
   onAdvance: (task: Task) => void;
   onDelete: (task: Task) => void;
+  onEdit: (task: Task) => void;
 }
 
 const ADVANCE_LOOK: Record<Status, { label: string; tone: string; icon: ReactNode }> = {
@@ -46,34 +52,109 @@ export function StatusIcon({ status }: { status: Status }) {
   );
 }
 
-/** One task. Swipe right → next status, swipe left → delete. Tap the title to open details. */
-export const TaskRow = forwardRef<HTMLLIElement, Props>(function TaskRow({ task, listName, onAdvance, onDelete }, ref) {
+/**
+ * One task. Swipe sideways to reveal action buttons (iOS Mail style):
+ * right → next status, left → edit / delete. Pull all the way (or flick right) to run the action directly.
+ * Tap the title to open details.
+ */
+export const TaskRow = forwardRef<HTMLLIElement, Props>(function TaskRow({ task, listName, onAdvance, onDelete, onEdit }, ref) {
   const x = useMotionValue(0);
-  const [armed, setArmed] = useState<'advance' | 'delete' | null>(null);
-  const armedRef = useRef<typeof armed>(null);
+  const [open, setOpen] = useState<'left' | 'right' | null>(null);
+  const [full, setFull] = useState<'advance' | 'delete' | null>(null);
+  const fullRef = useRef<typeof full>(null);
   // Tracked synchronously from raw pointer events: Motion reports drag start a frame late,
   // so a very fast swipe could otherwise end with a click that opens the task.
-  const press = useRef<{ x: number; y: number; moved: boolean; settled: boolean } | null>(null);
+  const press = useRef<{ x: number; y: number; moved: boolean; settled: boolean; trail: { x: number; t: number }[]; upAt?: number } | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
+  const itemRef = useRef<HTMLLIElement | null>(null);
+
+  const fullAt = () => Math.max(OPEN_RIGHT + 70, (rowRef.current?.offsetWidth ?? 360) * 0.58);
 
   useMotionValueEvent(x, 'change', (v) => {
-    const a = v > THRESHOLD ? 'advance' : v < -THRESHOLD ? 'delete' : null;
-    if (a !== armedRef.current) {
-      armedRef.current = a;
-      setArmed(a);
-      if (a) navigator.vibrate?.(8);
+    const limit = fullAt();
+    const f = v > limit ? 'advance' : v < -limit ? 'delete' : null;
+    if (f !== fullRef.current) {
+      fullRef.current = f;
+      setFull(f);
+      if (f) navigator.vibrate?.(8);
     }
   });
 
-  const leftOpacity = useTransform(x, [0, 20, THRESHOLD], [0, 0.55, 1]);
-  const rightOpacity = useTransform(x, [-THRESHOLD, -20, 0], [1, 0.55, 0]);
-  const leftIconScale = useTransform(x, [0, THRESHOLD, THRESHOLD * 2], [0.5, 1, 1.15]);
-  const rightIconScale = useTransform(x, [-THRESHOLD * 2, -THRESHOLD, 0], [1.15, 1, 0.5]);
+  const leftWidth = useTransform(x, (v) => Math.max(0, v));
+  const rightWidth = useTransform(x, (v) => Math.max(0, -v));
+  const leftIconScale = useTransform(x, [0, OPEN_LEFT * 0.6, OPEN_LEFT], [0.4, 0.8, 1]);
+  const rightIconScale = useTransform(x, [-OPEN_RIGHT, -OPEN_RIGHT * 0.4, 0], [1, 0.8, 0.4]);
+
+  const close = () => {
+    animate(x, 0, SPRING);
+    setOpen(null);
+    if (closeOpenRow === close) closeOpenRow = null;
+  };
+  const closeRef = useRef(close);
+  closeRef.current = close;
+
+  const openTo = (side: 'left' | 'right') => {
+    if (closeOpenRow && closeOpenRow !== closeRef.current) closeOpenRow();
+    closeOpenRow = closeRef.current;
+    setOpen(side);
+    animate(x, side === 'left' ? OPEN_LEFT : -OPEN_RIGHT, SPRING);
+  };
+
+  // An open row closes when anything else on the page is touched
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!itemRef.current?.contains(e.target as Node)) closeRef.current();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [open]);
+  useEffect(
+    () => () => {
+      if (closeOpenRow === closeRef.current) closeOpenRow = null;
+    },
+    [],
+  );
 
   const next = NEXT_STATUS[task.status];
   const look = ADVANCE_LOOK[next];
   const due = dueInfo(task.dueDate);
   const href = `/lists/${task.listId}/tasks/${task.id}`;
+
+  const runAdvance = () => {
+    setOpen(null);
+    animate(x, 0, SPRING);
+    onAdvance(task);
+  };
+  const runDelete = () => {
+    const width = rowRef.current?.offsetWidth ?? 360;
+    setOpen(null);
+    animate(x, -width, { duration: 0.2, ease: [0.4, 0, 1, 1] }).then(() => onDelete(task));
+  };
+
+  /** Finger speed over the last ~100ms, from raw pointer events (px/s); 0 if it stopped before letting go */
+  const pointerVelocity = () => {
+    const trail = press.current?.trail ?? [];
+    // Measured against the moment the finger lifted, not when this runs (that can lag on a busy device)
+    const now = press.current?.upAt ?? performance.now();
+    const last = trail[trail.length - 1];
+    if (!last || now - last.t > 120) return 0;
+    const first = trail.find((p) => last.t - p.t <= 100) ?? last;
+    const dt = Math.max(last.t - first.t, 8);
+    return ((last.x - first.x) / dt) * 1000;
+  };
+  /**
+   * Still moving fast when the finger lifted, judged by distance per move event (works even when a
+   * busy device delivers events late and timing-based speed comes out too low).
+   */
+  const releasedMoving = () => {
+    const trail = press.current?.trail ?? [];
+    const upAt = press.current?.upAt;
+    if (trail.length < 2 || upAt === undefined || upAt - trail[trail.length - 1].t > 250) return 0;
+    // Busy browsers merge move events, so use however many recent ones there are (up to 4)
+    const recent = trail.slice(-4);
+    return (recent[recent.length - 1].x - recent[0].x) / (recent.length - 1);
+  };
 
   const settle = (_: unknown, info: { velocity: { x: number } }) => {
     // Runs once per press: either from Motion's onDragEnd or from the pointer-up fallback below
@@ -82,42 +163,95 @@ export const TaskRow = forwardRef<HTMLLIElement, Props>(function TaskRow({ task,
       press.current.settled = true;
     }
     const v = x.get();
-    const vx = info.velocity.x;
+    const own = pointerVelocity();
+    const vx = Math.abs(own) > Math.abs(info.velocity.x) ? own : info.velocity.x;
     const width = rowRef.current?.offsetWidth ?? 360;
-    if (v > THRESHOLD || (vx > FLICK_VELOCITY && v > FLICK_MIN)) {
-      animate(x, width, { duration: 0.2, ease: [0.4, 0, 1, 1] }).then(() => onAdvance(task));
-    } else if (v < -THRESHOLD || (vx < -FLICK_VELOCITY && v < -FLICK_MIN)) {
-      animate(x, -width, { duration: 0.2, ease: [0.4, 0, 1, 1] }).then(() => onDelete(task));
+    const limit = fullAt();
+    const flick = vx > FLICK_VELOCITY || releasedMoving() >= 8;
+    if (v > limit || (open === null && flick && v > FLICK_MIN)) {
+      animate(x, width, { duration: 0.2, ease: [0.4, 0, 1, 1] }).then(() => {
+        x.set(0);
+        setOpen(null);
+        onAdvance(task);
+      });
+    } else if (v < -limit) {
+      runDelete();
+    } else if (v > OPEN_LEFT / 2 && !(open === 'left' && vx < -400)) {
+      openTo('left');
+    } else if (v < -OPEN_RIGHT / 2.5 && !(open === 'right' && vx > 400)) {
+      openTo('right');
     } else {
-      animate(x, 0, SPRING);
+      close();
     }
+  };
+
+  const setRefs = (el: HTMLLIElement | null) => {
+    itemRef.current = el;
+    if (typeof ref === 'function') ref(el);
+    else if (ref) ref.current = el;
   };
 
   return (
     <motion.li
-      ref={ref}
+      ref={setRefs}
       layout="position"
       className="task-item"
       data-testid="task-row"
       data-status={task.status}
       data-task-id={task.id}
+      data-open={open ?? undefined}
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0, transition: { duration: 0.22 } }}
       transition={{ height: SPRING, opacity: { duration: 0.2 } }}
     >
-      <div className="swipe-actions" aria-hidden="true">
-        <motion.div className={`swipe-action swipe-left tone-${look.tone} ${armed === 'advance' ? 'is-armed' : ''}`} style={{ opacity: leftOpacity }}>
-          <motion.span style={{ scale: leftIconScale }}>{look.icon}</motion.span>
-          <span className="swipe-label">{STATUS_LABEL[next]}</span>
-        </motion.div>
-        <motion.div className={`swipe-action swipe-right tone-red ${armed === 'delete' ? 'is-armed' : ''}`} style={{ opacity: rightOpacity }}>
-          <span className="swipe-label">削除</span>
-          <motion.span style={{ scale: rightIconScale }}>
-            <Trash size={20} />
+      <motion.div className="swipe-tray swipe-tray-left" style={{ width: leftWidth }} aria-hidden={open !== 'left'}>
+        <button
+          type="button"
+          className={`swipe-btn tone-${look.tone}`}
+          tabIndex={open === 'left' ? 0 : -1}
+          aria-label={`ステータスを${STATUS_LABEL[next]}に`}
+          onClick={runAdvance}
+        >
+          <motion.span className="swipe-btn-inner" style={{ scale: leftIconScale }}>
+            {look.icon}
+            <span className="swipe-label">{STATUS_LABEL[next]}</span>
           </motion.span>
-        </motion.div>
-      </div>
+        </button>
+      </motion.div>
+      <motion.div
+        className={`swipe-tray swipe-tray-right ${full === 'delete' ? 'is-full' : ''}`}
+        style={{ width: rightWidth }}
+        aria-hidden={open !== 'right'}
+      >
+        <button
+          type="button"
+          className="swipe-btn swipe-btn-edit tone-gray"
+          tabIndex={open === 'right' ? 0 : -1}
+          aria-label="編集"
+          onClick={() => {
+            close();
+            onEdit(task);
+          }}
+        >
+          <motion.span className="swipe-btn-inner" style={{ scale: rightIconScale }}>
+            <Sliders size={19} />
+            <span className="swipe-label">編集</span>
+          </motion.span>
+        </button>
+        <button
+          type="button"
+          className="swipe-btn swipe-btn-delete tone-red"
+          tabIndex={open === 'right' ? 0 : -1}
+          aria-label="削除"
+          onClick={runDelete}
+        >
+          <motion.span className="swipe-btn-inner" style={{ scale: rightIconScale }}>
+            <Trash size={19} />
+            <span className="swipe-label">削除</span>
+          </motion.span>
+        </button>
+      </motion.div>
       <motion.div
         ref={rowRef}
         className={`task-row ${task.status === 'done' ? 'is-done' : ''}`}
@@ -127,29 +261,37 @@ export const TaskRow = forwardRef<HTMLLIElement, Props>(function TaskRow({ task,
         dragMomentum={false}
         onDragEnd={settle}
         onPointerDown={(e) => {
-          press.current = { x: e.clientX, y: e.clientY, moved: false, settled: false };
+          press.current = { x: e.clientX, y: e.clientY, moved: false, settled: false, trail: [{ x: e.clientX, t: e.timeStamp }] };
           const current = press.current;
           // Fallback: if a gesture ends too fast for Motion to report drag end, still settle the row
-          const onUp = () => {
-            window.removeEventListener('pointerup', onUp);
-            window.removeEventListener('pointercancel', onUp);
+          const onUp = (ev: PointerEvent) => {
+            current.upAt = ev.timeStamp;
+            window.removeEventListener('pointerup', onUp, true);
+            window.removeEventListener('pointercancel', onUp, true);
             setTimeout(() => {
-              if (press.current === current && !current.settled && x.get() !== 0 && !x.isAnimating()) {
+              const rest = open === 'left' ? OPEN_LEFT : open === 'right' ? -OPEN_RIGHT : 0;
+              if (press.current === current && !current.settled && x.get() !== rest && !x.isAnimating()) {
                 settle(undefined, { velocity: { x: 0 } });
               }
             }, 160);
           };
-          window.addEventListener('pointerup', onUp);
-          window.addEventListener('pointercancel', onUp);
+          // Capture phase: runs before Motion's own drag-end handling
+          window.addEventListener('pointerup', onUp, true);
+          window.addEventListener('pointercancel', onUp, true);
         }}
         onPointerMove={(e) => {
           const p = press.current;
-          if (p && !p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 6) p.moved = true;
+          if (!p) return;
+          if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 6) p.moved = true;
+          p.trail.push({ x: e.clientX, t: e.timeStamp });
+          if (p.trail.length > 12) p.trail.shift();
         }}
         onClickCapture={(e) => {
-          if (press.current?.moved) {
+          if (press.current?.moved || open) {
             e.preventDefault();
             e.stopPropagation();
+            // Tapping an open row just closes it
+            if (open && !press.current?.moved) close();
           }
         }}
         data-testid="task-swipe"

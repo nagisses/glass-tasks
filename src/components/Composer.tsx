@@ -1,12 +1,14 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { COVER_TINT } from '../format';
 import { ApiError } from '../api';
-import { useAiQuickAdd, useCreateTask, useFeatures, useLists } from '../hooks';
+import { LIST_TOKEN, suggest } from '../autocomplete';
+import type { Suggestion } from '../autocomplete';
+import { useAiQuickAdd, useCreateTask, useFeatures, useLists, useTasks } from '../hooks';
 import { load, save } from '../storage';
 import { Dropdown } from './Dropdown';
-import { ArrowUp, Sparkles } from './Icons';
+import { ArrowUp, Clock, Sparkles } from './Icons';
 import { useToast } from './Toast';
 
 const DRAFT_KEY = 'gt.draft';
@@ -28,6 +30,31 @@ export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState(() => initialDraft || load<string>(DRAFT_KEY, ''));
   const [chosen, setChosen] = useState<string | undefined>(defaultListId);
+
+  // ----- autocomplete: past task titles, or lists after "#" -----
+  const allTasks = useTasks();
+  const [focused, setFocused] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [active, setActive] = useState(-1);
+  const listboxId = useId();
+  const suggestions = useMemo(() => suggest(text, allTasks.data, lists.data), [text, allTasks.data, lists.data]);
+  const suggestOpen = focused && !dismissed && suggestions.length > 0 && !aiAdd.isPending;
+  const edit = (v: string) => {
+    setText(v);
+    setDismissed(false);
+    setActive(-1);
+  };
+  const choose = (sg: Suggestion) => {
+    if (sg.kind === 'list') {
+      setChosen(sg.list.id);
+      setText(text.replace(LIST_TOKEN, '').trimEnd());
+    } else {
+      setText(sg.label);
+    }
+    setDismissed(true);
+    setActive(-1);
+    inputRef.current?.focus({ preventScroll: true });
+  };
 
   useEffect(() => {
     setChosen(defaultListId);
@@ -93,8 +120,21 @@ export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     // Enter that confirms Japanese IME conversion must not submit
-    if (e.key === 'Enter' && (e.nativeEvent.isComposing || e.keyCode === 229)) {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) {
+      if (e.key === 'Enter') e.preventDefault();
+      return;
+    }
+    if (!suggestOpen) return;
+    const n = suggestions.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
+      setActive((i) => (e.key === 'ArrowDown' ? (i + 1) % n : i <= 0 ? n - 1 : i - 1));
+    } else if (e.key === 'Enter' && active >= 0 && active < n) {
+      e.preventDefault();
+      choose(suggestions[active]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setDismissed(true);
     }
   };
 
@@ -107,6 +147,46 @@ export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
       transition={{ type: 'spring', stiffness: 420, damping: 34 }}
       data-testid="composer"
     >
+      <AnimatePresence>
+        {suggestOpen && (
+          <motion.ul
+            key="suggest"
+            id={listboxId}
+            role="listbox"
+            aria-label="候補"
+            className="autocomplete glass"
+            initial={{ opacity: 0, y: 10, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98, transition: { duration: 0.12 } }}
+            transition={{ type: 'spring', stiffness: 560, damping: 36 }}
+          >
+            {suggestions.map((sg, i) => (
+              <li
+                key={sg.key}
+                id={`${listboxId}-${i}`}
+                role="option"
+                aria-selected={i === active}
+                className={`autocomplete-option ${i === active ? 'is-active' : ''}`}
+                // Keep focus in the input so the keyboard stays open on phones
+                onPointerDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => choose(sg)}
+              >
+                {sg.kind === 'list' ? (
+                  <span className="list-dot" style={{ background: COVER_TINT[sg.list.cover] }} />
+                ) : (
+                  <span className="autocomplete-icon" aria-hidden="true">
+                    <Clock size={15} />
+                  </span>
+                )}
+                <span className="autocomplete-label">
+                  <Highlight text={sg.label} query={sg.kind === 'list' ? (text.match(LIST_TOKEN)?.[1] ?? '') : text} />
+                </span>
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
       {lists.data ? (
         <Dropdown
           label="追加先リスト"
@@ -133,8 +213,15 @@ export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
         className="composer-input"
         placeholder="タスクを追加"
         aria-label="タスクを追加"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={suggestOpen}
+        aria-controls={suggestOpen ? listboxId : undefined}
+        aria-activedescendant={suggestOpen && active >= 0 ? `${listboxId}-${active}` : undefined}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => edit(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onKeyDown={onKeyDown}
         readOnly={aiAdd.isPending}
         maxLength={300}
@@ -176,5 +263,19 @@ export function Composer({ defaultListId, initialDraft, focusOnMount }: Props) {
         )}
       </AnimatePresence>
     </motion.form>
+  );
+}
+
+/** Bold the part of a suggestion that matches what was typed (plain substring match only). */
+function Highlight({ text, query }: { text: string; query: string }) {
+  const q = query.trim();
+  const i = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  if (i < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark>{text.slice(i, i + q.length)}</mark>
+      {text.slice(i + q.length)}
+    </>
   );
 }

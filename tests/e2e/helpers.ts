@@ -16,7 +16,7 @@ export async function login(page: Page, prefix = 'user'): Promise<string> {
   return email;
 }
 
-export const composer = (page: Page) => page.getByRole('textbox', { name: 'タスクを追加' });
+export const composer = (page: Page) => page.getByRole('combobox', { name: 'タスクを追加' });
 
 export async function addTask(page: Page, title: string) {
   const input = composer(page);
@@ -59,6 +59,37 @@ export async function swipe(page: Page, target: Locator, dx: number) {
   await page.mouse.up();
 }
 
+/**
+ * Slow drag on a task row that pauses before letting go (no flick velocity), so the row
+ * settles by distance: it opens to show its buttons, or runs the action when pulled far enough.
+ */
+export async function slowSwipe(page: Page, target: Locator, dx: number) {
+  const el = target.getByTestId('task-swipe');
+  await el.scrollIntoViewIfNeeded();
+  const box = await stableBox(el);
+  const y = box.y + box.height / 2;
+  const x0 = dx > 0 ? box.x + 72 : box.x + box.width - 24;
+  await page.mouse.move(x0, y);
+  await page.mouse.down();
+  const steps = 16;
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(x0 + (dx * i) / steps, y + i * 0.2);
+    await page.waitForTimeout(16);
+  }
+  // Slow down and settle like a real finger before lifting
+  for (let i = 1; i <= 4; i++) {
+    await page.mouse.move(x0 + dx + Math.sign(dx) * i * 0.5, y + 3.2);
+    await page.waitForTimeout(30);
+  }
+  await page.waitForTimeout(300);
+  await page.mouse.up();
+}
+
+/** Width of a task row, for "pull all the way" gestures */
+export async function rowWidth(target: Locator) {
+  return (await target.getByTestId('task-swipe').boundingBox())!.width;
+}
+
 /** Real touch flick via the Chrome DevTools Protocol (Chromium only). */
 export async function touchFlick(page: Page, x0: number, y: number, dx: number, steps = 10) {
   const cdp = await page.context().newCDPSession(page);
@@ -94,5 +125,63 @@ export async function delay(page: Page, pattern: string | RegExp, ms: number) {
   await page.route(pattern, async (route) => {
     await new Promise((r) => setTimeout(r, ms));
     await route.continue();
+  });
+}
+
+/**
+ * Pull the page down with a finger and let go.
+ * Chromium phones get real touch input via the DevTools Protocol; other engines get
+ * touch events dispatched from the page (Playwright has no touch-move API for WebKit).
+ */
+export async function pullDown(page: Page, dy: number, opts: { x?: number; y?: number; beforeRelease?: () => Promise<void> } = {}) {
+  const vp = page.viewportSize()!;
+  const x = opts.x ?? Math.round(vp.width / 2);
+  const y0 = opts.y ?? 160;
+  const steps = 12;
+  const browserName = page.context().browser()?.browserType().name();
+  const hasTouch = await page.evaluate(() => navigator.maxTouchPoints > 0);
+  if (browserName === 'chromium' && hasTouch) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y0 }] });
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y0 + (dy * i) / steps }] });
+      await page.waitForTimeout(16);
+    }
+    await opts.beforeRelease?.();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.detach();
+    return;
+  }
+  const fire = (type: string, py: number) =>
+    page.evaluate(
+      ({ type, x, py }) => {
+        const target = document.elementFromPoint(x, py) ?? document.body;
+        const ev = new Event(type, { bubbles: true, cancelable: true });
+        const pt = { clientX: x, clientY: py, pageX: x, pageY: py, identifier: 1, target };
+        Object.defineProperty(ev, 'touches', { value: type === 'touchend' ? [] : [pt] });
+        Object.defineProperty(ev, 'changedTouches', { value: [pt] });
+        target.dispatchEvent(ev);
+      },
+      { type, x, py },
+    );
+  await fire('touchstart', y0);
+  for (let i = 1; i <= steps; i++) {
+    await fire('touchmove', y0 + (dy * i) / steps);
+    await page.waitForTimeout(16);
+  }
+  await opts.beforeRelease?.();
+  await fire('touchend', y0 + dy);
+}
+
+/** The visible rectangle of an element cut out with clip-path: inset(...) */
+export async function clipRect(loc: Locator) {
+  return loc.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const m = getComputedStyle(el).clipPath.match(/inset\(([^)]*?)(?: round [^)]*)?\)/);
+    if (!m) return null;
+    // Browsers shorten inset() like the margin shorthand (1–4 values)
+    const v = m[1].trim().split(/\s+/).map((x) => parseFloat(x));
+    const [t, rr = t, b = t, l = rr] = v;
+    return { x: r.left + l, y: r.top + t, width: r.width - l - rr, height: r.height - t - b, opacity: getComputedStyle(el).opacity };
   });
 }

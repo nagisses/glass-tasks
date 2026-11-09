@@ -1,5 +1,5 @@
-import { motion } from 'motion/react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useElasticPill } from '../useElasticPill';
 
 interface Option<T extends string> {
   value: T;
@@ -16,7 +16,11 @@ interface Props<T extends string> {
   hideLegend?: boolean;
 }
 
-/** Segmented control built on native radio inputs (arrow keys, labels and form semantics for free). */
+/**
+ * Segmented control built on native radio inputs (arrow keys, labels and form semantics for free).
+ * The selection pill slides elastically; it carries a copy of the labels in the selected colours,
+ * so text under the pill changes colour exactly where the pill covers it.
+ */
 export function RadioGroup<T extends string>({ legend, name, value, options, onChange, hideLegend }: Props<T>) {
   const uid = useId();
   // Local copy so the checked state flips immediately, even if the saved value arrives a tick later
@@ -24,10 +28,22 @@ export function RadioGroup<T extends string>({ legend, name, value, options, onC
   useEffect(() => {
     setCurrent(value);
   }, [value]);
+
+  const trackRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
+  const index = options.findIndex((o) => o.value === current);
+  useElasticPill(
+    trackRef,
+    pillRef,
+    () => trackRef.current?.querySelectorAll<HTMLElement>(':scope > .segment')[index] ?? null,
+    'x',
+    `${index}/${options.length}`,
+  );
+
   return (
     <fieldset className="radio-group">
       <legend className={hideLegend ? 'sr-only' : 'field-label'}>{legend}</legend>
-      <div className="segmented">
+      <div className="segmented" ref={trackRef}>
         {options.map((o) => {
           const checked = o.value === current;
           return (
@@ -42,17 +58,19 @@ export function RadioGroup<T extends string>({ legend, name, value, options, onC
                   onChange(o.value);
                 }}
               />
-              {checked && (
-                <motion.span
-                  layoutId={`seg-${uid}`}
-                  className="segment-pill"
-                  transition={{ type: 'spring', stiffness: 520, damping: 38 }}
-                />
-              )}
               <span className="segment-label">{o.label}</span>
             </label>
           );
         })}
+        <div className="segment-pill-shadow" aria-hidden="true">
+          <div className="segment-pill-layer" ref={pillRef} data-testid="segment-pill">
+            {options.map((o) => (
+              <span key={o.value} className="segment-clone" data-tone={o.tone}>
+                {o.label}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
     </fieldset>
   );

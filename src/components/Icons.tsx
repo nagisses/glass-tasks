@@ -47,6 +47,17 @@ export const ArrowUp = (p: P) => (
     <path d="M12 19V5M5.5 11.5L12 5l6.5 6.5" />
   </Svg>
 );
+export const ArrowDown = (p: P) => (
+  <Svg {...p} strokeWidth={2.4}>
+    <path d="M12 5v14M5.5 12.5L12 19l6.5-6.5" />
+  </Svg>
+);
+export const Clock = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5V12l3 2" />
+  </Svg>
+);
 export const Close = (p: P) => (
   <Svg {...p}>
     <path d="M6 6l12 12M18 6L6 18" />

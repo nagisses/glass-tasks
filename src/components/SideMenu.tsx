@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
+import { useRef } from 'react';
 import { Link, useLocation } from 'wouter';
 import { api } from '../api';
 import type { User } from '../api';
@@ -12,6 +13,7 @@ import { Modal } from './Modal';
 import { RadioGroup } from './RadioGroup';
 import { MenuListSkeleton } from './Skeleton';
 import { useToast } from './Toast';
+import { useElasticPill } from '../useElasticPill';
 
 interface Props {
   open: boolean;
@@ -39,6 +41,19 @@ export function SideMenu({ open, onClose, user, onCreateList }: Props) {
     qc.setQueryData(qk.me, null);
     qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
   };
+
+  const navRef = useRef<HTMLElement>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
+  useElasticPill(
+    navRef,
+    pillRef,
+    () => navRef.current?.querySelector<HTMLElement>('[aria-current="page"]') ?? null,
+    'y',
+    `${open}|${location}|${lists.data?.length ?? -1}`,
+    14,
+  );
+  // Close a moment after picking a page, so the highlight can be seen sliding to it
+  const closeSoon = () => setTimeout(onClose, 420);
 
   const current = (href: string) => (location === href || location.startsWith(`${href}/`) ? 'page' : undefined);
 
@@ -71,8 +86,9 @@ export function SideMenu({ open, onClose, user, onCreateList }: Props) {
         </div>
       }
     >
-      <nav id="side-menu" aria-label="メインメニュー" className="menu">
-        <Link href="/" className="menu-item" aria-current={location === '/' ? 'page' : undefined} onClick={onClose}>
+      <nav id="side-menu" aria-label="メインメニュー" className="menu" ref={navRef}>
+        <div className="menu-pill" ref={pillRef} aria-hidden="true" data-testid="menu-pill" />
+        <Link href="/" className="menu-item" aria-current={location === '/' ? 'page' : undefined} onClick={closeSoon}>
           <span className="menu-icon">
             <Home size={19} />
           </span>
@@ -95,7 +111,7 @@ export function SideMenu({ open, onClose, user, onCreateList }: Props) {
                     href={`/lists/${l.id}`}
                     className="menu-item"
                     aria-current={current(`/lists/${l.id}`)}
-                    onClick={onClose}
+                    onClick={closeSoon}
                   >
                     <img className="menu-thumb" src={coverUrl(l.cover)} alt="" />
                     <span className="menu-label">{l.name}</span>

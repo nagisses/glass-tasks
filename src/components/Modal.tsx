@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useDragControls } from 'motion/react';
 import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -32,7 +32,7 @@ interface ModalProps {
   title: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  variant?: 'dialog' | 'drawer';
+  variant?: 'dialog' | 'drawer' | 'sheet';
   /** Element id to focus on open; defaults to the first focusable element */
   initialFocus?: string;
   className?: string;
@@ -97,9 +97,17 @@ function ModalLayer({ onClose, title, children, footer, variant = 'dialog', init
   }, []);
 
   const drawer = variant === 'drawer';
+  const sheet = variant === 'sheet';
+  const drag = useDragControls();
+
+  const motionProps = drawer
+    ? { initial: { x: '-105%' }, animate: { x: 0 }, exit: { x: '-105%' } }
+    : sheet
+      ? { initial: { y: '105%' }, animate: { y: 0 }, exit: { y: '105%' } }
+      : { initial: { opacity: 0, y: 48, scale: 0.94 }, animate: { opacity: 1, y: 0, scale: 1 }, exit: { opacity: 0, y: 32, scale: 0.96 } };
 
   return (
-    <div className={`layer layer-${variant}`} ref={layerRef} data-testid={drawer ? 'drawer-layer' : 'modal-layer'}>
+    <div className={`layer layer-${variant}`} ref={layerRef} data-testid={drawer ? 'drawer-layer' : sheet ? 'sheet-layer' : 'modal-layer'}>
       <motion.div
         className="backdrop"
         data-testid="modal-backdrop"
@@ -115,13 +123,30 @@ function ModalLayer({ onClose, title, children, footer, variant = 'dialog', init
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`panel glass ${drawer ? 'drawer' : 'dialog'} ${className ?? ''}`}
-        initial={drawer ? { x: '-105%' } : { opacity: 0, y: 48, scale: 0.94 }}
-        animate={drawer ? { x: 0 } : { opacity: 1, y: 0, scale: 1 }}
-        exit={drawer ? { x: '-105%' } : { opacity: 0, y: 32, scale: 0.96 }}
-        transition={{ type: 'spring', stiffness: 420, damping: drawer ? 40 : 32, mass: 0.9 }}
+        className={`panel glass ${variant} ${className ?? ''}`}
+        {...motionProps}
+        transition={{ type: 'spring', stiffness: 420, damping: drawer || sheet ? 40 : 32, mass: 0.9 }}
+        // Bottom sheet: drag the grabber/header down to dismiss; it springs back if not pulled far enough
+        drag={sheet ? 'y' : false}
+        dragListener={false}
+        dragControls={drag}
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0.04, bottom: 1 }}
+        onDragEnd={(_, info) => {
+          if (info.offset.y > 110 || (info.velocity.y > 700 && info.offset.y > 20)) onCloseRef.current();
+        }}
       >
-        <div className="panel-head">
+        {sheet && (
+          <div
+            className="sheet-grabber"
+            data-testid="sheet-grabber"
+            aria-hidden="true"
+            onPointerDown={(e) => drag.start(e)}
+          >
+            <span />
+          </div>
+        )}
+        <div className="panel-head" onPointerDown={sheet ? (e) => !(e.target as HTMLElement).closest('button') && drag.start(e) : undefined}>
           <h2 id={titleId} className="panel-title">
             {title}
           </h2>
