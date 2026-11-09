@@ -4,6 +4,10 @@
 
 **公開中: https://glass-tasks.nagisses.workers.dev** （ログイン不要・開いてすぐ使えます）
 
+<img src="docs/qr.png" width="160" alt="公開URLのQRコード">
+
+スマホのカメラで読み取ると開けます。ホーム画面に追加すると、アプリのように全画面で使えます（iPhone: Safari の共有ボタン →「ホーム画面に追加」／ Android: Chrome のメニュー →「ホーム画面に追加」または「アプリをインストール」）。
+
 Cloudflare Workers（API・配信）＋ D1（データベース）で動きます。Google ログインと AI 機能（Workers AI・Gemini）も実装済みで、設定で切り替えられます（下の「公開設定」参照）。
 
 | ホーム | スワイプ | タスク詳細 | メニュー | 読み込み中 |
