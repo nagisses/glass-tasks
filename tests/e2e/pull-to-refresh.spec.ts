@@ -38,8 +38,10 @@ test.describe('プルトゥリフレッシュ', () => {
     await page.waitForTimeout(800);
     expect(fetches).toBe(0);
     await expect(page.getByTestId('ptr')).toHaveAttribute('data-phase', 'idle');
-    const y = await page.locator('main.page').evaluate((el) => getComputedStyle(el).transform);
-    expect(y).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+    // Springs back to where it was
+    await expect
+      .poll(() => page.locator('main.page').evaluate((el) => getComputedStyle(el).transform))
+      .toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
   });
 
   test('リスト画面でも使える', async ({ page }) => {

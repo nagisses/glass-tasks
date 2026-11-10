@@ -56,7 +56,9 @@ test.describe('ボトムシート', () => {
     await page.mouse.up();
     await page.waitForTimeout(600);
     await expect(sheet).toBeVisible();
-    expect(Math.abs((await stableBox(page.getByTestId('sheet-grabber'))).y - grab.y)).toBeLessThan(3);
+    await expect
+      .poll(async () => Math.abs((await page.getByTestId('sheet-grabber').boundingBox())!.y - grab.y))
+      .toBeLessThan(1);
 
     // A long pull dismisses
     await page.mouse.move(x, y);

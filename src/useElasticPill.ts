@@ -107,13 +107,14 @@ export function useElasticPill(
       paint();
     }
 
-    // Layout changes (resize, accordion opening, fonts) re-snap without animation
-    let first = true;
+    // Layout changes (resize, accordion opening, fonts) re-snap without animation.
+    // Only a real size change counts: some engines (WebKit) report the box again right after a tap,
+    // which must not cut the slide short.
+    let size = `${box.clientWidth}x${box.clientHeight}`;
     const ro = new ResizeObserver(() => {
-      if (first) {
-        first = false;
-        return;
-      }
+      const now = `${box.clientWidth}x${box.clientHeight}`;
+      if (now === size) return;
+      size = now;
       place(measure());
     });
     ro.observe(box);

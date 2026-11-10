@@ -1,5 +1,6 @@
-import { AnimatePresence, motion, useDragControls } from 'motion/react';
+import { animate, AnimatePresence, motion } from 'motion/react';
 import { useEffect, useId, useRef } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Close } from './Icons';
@@ -98,7 +99,7 @@ function ModalLayer({ onClose, title, children, footer, variant = 'dialog', init
 
   const drawer = variant === 'drawer';
   const sheet = variant === 'sheet';
-  const drag = useDragControls();
+  const dragHandlers = useSheetDrag(panelRef, () => onCloseRef.current());
 
   const motionProps = drawer
     ? { initial: { x: '-105%' }, animate: { x: 0 }, exit: { x: '-105%' } }
@@ -126,27 +127,18 @@ function ModalLayer({ onClose, title, children, footer, variant = 'dialog', init
         className={`panel glass ${variant} ${className ?? ''}`}
         {...motionProps}
         transition={{ type: 'spring', stiffness: 420, damping: drawer || sheet ? 40 : 32, mass: 0.9 }}
-        // Bottom sheet: drag the grabber/header down to dismiss; it springs back if not pulled far enough
-        drag={sheet ? 'y' : false}
-        dragListener={false}
-        dragControls={drag}
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={{ top: 0.04, bottom: 1 }}
-        onDragEnd={(_, info) => {
-          if (info.offset.y > 110 || (info.velocity.y > 700 && info.offset.y > 20)) onCloseRef.current();
-        }}
       >
         {sheet && (
           <div
             className="sheet-grabber"
             data-testid="sheet-grabber"
             aria-hidden="true"
-            onPointerDown={(e) => drag.start(e)}
+            {...dragHandlers}
           >
             <span />
           </div>
         )}
-        <div className="panel-head" onPointerDown={sheet ? (e) => !(e.target as HTMLElement).closest('button') && drag.start(e) : undefined}>
+        <div className="panel-head" {...(sheet ? dragHandlers : {})}>
           <h2 id={titleId} className="panel-title">
             {title}
           </h2>
@@ -166,4 +158,50 @@ function ModalLayer({ onClose, title, children, footer, variant = 'dialog', init
       </motion.div>
     </div>
   );
+}
+
+/**
+ * Drag a bottom sheet down by its grabber/header. Pulled far (or flung) → closes; otherwise springs back.
+ * Uses pointer capture and the CSS `translate` property, which adds to (and never fights) the
+ * open/close animation's transform. Works the same with touch, mouse and pen in every engine.
+ */
+function useSheetDrag(panelRef: React.RefObject<HTMLDivElement | null>, close: () => void) {
+  const setOffset = (dy: number) => {
+    if (panelRef.current) panelRef.current.style.translate = dy ? `0 ${dy}px` : '';
+  };
+  return {
+    onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+      if ((e.target as HTMLElement).closest('button') || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      const id = e.pointerId;
+      const y0 = e.clientY;
+      let dy = 0;
+      const trail = [{ y: e.clientY, t: e.timeStamp }];
+      // Window listeners (not element capture): the gesture is followed even if the finger leaves the
+      // grabber or the element re-renders, and the release is never missed
+      const move = (ev: PointerEvent) => {
+        if (ev.pointerId !== id) return;
+        if (ev.cancelable) ev.preventDefault();
+        const raw = ev.clientY - y0;
+        // Free movement downward, a stiff rubber band upward
+        dy = raw > 0 ? raw : raw * 0.08;
+        trail.push({ y: ev.clientY, t: ev.timeStamp });
+        if (trail.length > 12) trail.shift();
+        setOffset(dy);
+      };
+      const up = (ev: PointerEvent) => {
+        if (ev.pointerId !== id) return;
+        window.removeEventListener('pointermove', move, true);
+        window.removeEventListener('pointerup', up, true);
+        window.removeEventListener('pointercancel', up, true);
+        const recent = trail.filter((p) => ev.timeStamp - p.t < 100);
+        const first = recent[0];
+        const v = first ? ((ev.clientY - first.y) / Math.max(ev.timeStamp - first.t, 8)) * 1000 : 0;
+        if (ev.type === 'pointerup' && (dy > 110 || (v > 700 && dy > 20))) close();
+        else animate(dy, 0, { type: 'spring', stiffness: 500, damping: 38, onUpdate: setOffset });
+      };
+      window.addEventListener('pointermove', move, true);
+      window.addEventListener('pointerup', up, true);
+      window.addEventListener('pointercancel', up, true);
+    },
+  };
 }
