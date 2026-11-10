@@ -50,13 +50,14 @@ test.describe('伸縮するスライドピル', () => {
       return { frames, segs };
     });
     const [first, , last] = segs;
-    const widest = Math.max(...frames.map((f) => f.r - f.l));
-    // Stretched well beyond one segment on the way
-    expect(widest).toBeGreaterThan((first.r - first.l) * 1.6);
-    // The leading (right) edge reaches the target while the trailing (left) edge is still on its way
-    const leadArrived = frames.findIndex((f) => f.r > last.r - 2);
-    expect(leadArrived).toBeGreaterThan(-1);
-    expect(frames[leadArrived].l).toBeLessThan(last.l - 4);
+    // How far each edge has travelled (0 = start, 1 = arrived). Judged per frame, so it also works
+    // where the browser only paints a few frames per second (WebKit without a GPU).
+    const gap = frames.map((f) => (f.r - first.r) / (last.r - first.r) - (f.l - first.l) / (last.l - first.l));
+    // The leading (right) edge runs well ahead of the trailing (left) edge on the way...
+    expect(Math.max(...gap)).toBeGreaterThan(0.25);
+    // ...so the pill is stretched wider than one segment, and never the other way round
+    expect(Math.max(...frames.map((f) => f.r - f.l))).toBeGreaterThan((first.r - first.l) * 1.15);
+    expect(Math.min(...gap)).toBeGreaterThan(-0.02);
     await expect(group.getByRole('radio', { name: '完了' })).toBeChecked();
     await expectCovers(pill, seg('完了'));
   });
