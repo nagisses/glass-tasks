@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addTask, login, row, section, slowSwipe, stableBox } from './helpers';
+import { addTask, login, row, section, slowSwipe } from './helpers';
 
 async function openSheet(page: import('@playwright/test').Page, title: string) {
   await slowSwipe(page, row(page, title), -150);
@@ -44,7 +44,13 @@ test.describe('ボトムシート', () => {
     await login(page);
     await addTask(page, '引いて閉じる');
     const sheet = await openSheet(page, '引いて閉じる');
-    const grab = await stableBox(page.getByTestId('sheet-grabber'));
+    // Wait until it has fully slid open (anchored to the bottom edge) before taking its resting place
+    const vp = page.viewportSize()!;
+    await expect.poll(async () => {
+      const b = (await sheet.boundingBox())!;
+      return Math.abs(b.y + b.height - vp.height);
+    }).toBeLessThan(0.5);
+    const grab = (await page.getByTestId('sheet-grabber').boundingBox())!;
     const x = grab.x + grab.width / 2;
     const y = grab.y + grab.height / 2;
 

@@ -23,8 +23,10 @@ test.describe('伸縮するスライドピル', () => {
     const seg = (name: string) => group.locator('label.segment').filter({ hasText: name });
     await expectCovers(pill, seg('未着手'));
 
-    // Record the pill's edges on every frame while it moves from the first to the last segment
+    // Record the pill's edges on every frame while it moves from the first to the last segment.
+    // The slide is slowed down 4x here so slow CI machines still catch plenty of frames mid-stretch.
     const { frames, segs } = await group.evaluate(async (el) => {
+      (window as { __pillTimeScale?: number }).__pillTimeScale = 4;
       const track = el.querySelector<HTMLElement>('.segmented')!;
       const layer = el.querySelector<HTMLElement>('[data-testid="segment-pill"]')!;
       const tx = track.getBoundingClientRect().left;
@@ -40,10 +42,11 @@ test.describe('伸縮するスライドピル', () => {
       const frames: { l: number; r: number }[] = [];
       track.querySelectorAll<HTMLInputElement>('input[type=radio]')[2].click();
       const t0 = performance.now();
-      while (performance.now() - t0 < 900) {
+      while (performance.now() - t0 < 2800) {
         await new Promise(requestAnimationFrame);
         frames.push(read());
       }
+      delete (window as { __pillTimeScale?: number }).__pillTimeScale;
       return { frames, segs };
     });
     const [first, , last] = segs;

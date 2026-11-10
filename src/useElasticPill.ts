@@ -95,9 +95,12 @@ export function useElasticPill(
       const [lead, trail]: Edge[] = axis === 'y' ? (fwd ? ['b', 't'] : ['t', 'b']) : fwd ? ['r', 'l'] : ['l', 'r'];
       // The cross axis jumps straight to the new size
       for (const e of (axis === 'y' ? ['l', 'r'] : ['t', 'b']) as Edge[]) s[e] = to[e];
+      // Tests can slow the slide down (window.__pillTimeScale) to sample it reliably on slow machines
+      const scale = (window as { __pillTimeScale?: number }).__pillTimeScale ?? 1;
       const tween = (edge: Edge, opts: Tween) =>
         animate(s[edge], to[edge], {
           ...opts,
+          duration: opts.duration * scale,
           onUpdate: (v) => {
             s[edge] = v;
             paint();
