@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { apiPost, createList, login, openMenu, row } from './helpers';
+import { apiPost, composer, createList, login, openMenu, row, slowSwipe } from './helpers';
 
 // Generates README screenshots. Run with: SCREENSHOTS=1 npx playwright test screenshots --project=mobile-safari
 test.skip(!process.env.SCREENSHOTS, 'screenshots only on demand');
@@ -33,16 +33,23 @@ test('screens', async ({ page }) => {
   await page.waitForTimeout(600);
   await page.screenshot({ path: 'docs/screenshots/list.png' });
 
-  // Swipe in progress
-  const el = row(page, '週次ミーティングの議題を送る').getByTestId('task-swipe');
-  const box = (await el.boundingBox())!;
-  await page.mouse.move(box.x + 80, box.y + box.height / 2);
-  await page.mouse.down();
-  for (let i = 1; i <= 8; i++) await page.mouse.move(box.x + 80 + i * 14, box.y + box.height / 2);
-  await page.waitForTimeout(200);
+  // Swipe action buttons
+  await slowSwipe(page, row(page, '週次ミーティングの議題を送る'), -150);
+  await page.waitForTimeout(500);
   await page.screenshot({ path: 'docs/screenshots/swipe.png' });
-  await page.mouse.move(box.x + 80, box.y + box.height / 2, { steps: 4 });
-  await page.mouse.up();
+
+  // Bottom sheet
+  await row(page, '週次ミーティングの議題を送る').getByRole('button', { name: '編集', exact: true }).click();
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: 'docs/screenshots/sheet.png' });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+
+  // Autocomplete
+  await composer(page).fill('企画');
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: 'docs/screenshots/autocomplete.png' });
+  await composer(page).fill('');
 
   await row(page, '企画書のドラフトを書く').getByRole('link').click();
   await expect(page.getByRole('textbox', { name: 'タスク名' })).toBeVisible();

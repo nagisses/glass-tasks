@@ -1,5 +1,6 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { animate, AnimatePresence, motion } from 'motion/react';
 import { useEffect, useId, useRef } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Close } from './Icons';
@@ -32,7 +33,7 @@ interface ModalProps {
   title: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  variant?: 'dialog' | 'drawer';
+  variant?: 'dialog' | 'drawer' | 'sheet';
   /** Element id to focus on open; defaults to the first focusable element */
   initialFocus?: string;
   className?: string;
@@ -97,9 +98,17 @@ function ModalLayer({ onClose, title, children, footer, variant = 'dialog', init
   }, []);
 
   const drawer = variant === 'drawer';
+  const sheet = variant === 'sheet';
+  const dragHandlers = useSheetDrag(panelRef, () => onCloseRef.current());
+
+  const motionProps = drawer
+    ? { initial: { x: '-105%' }, animate: { x: 0 }, exit: { x: '-105%' } }
+    : sheet
+      ? { initial: { y: '105%' }, animate: { y: 0 }, exit: { y: '105%' } }
+      : { initial: { opacity: 0, y: 48, scale: 0.94 }, animate: { opacity: 1, y: 0, scale: 1 }, exit: { opacity: 0, y: 32, scale: 0.96 } };
 
   return (
-    <div className={`layer layer-${variant}`} ref={layerRef} data-testid={drawer ? 'drawer-layer' : 'modal-layer'}>
+    <div className={`layer layer-${variant}`} ref={layerRef} data-testid={drawer ? 'drawer-layer' : sheet ? 'sheet-layer' : 'modal-layer'}>
       <motion.div
         className="backdrop"
         data-testid="modal-backdrop"
@@ -115,13 +124,21 @@ function ModalLayer({ onClose, title, children, footer, variant = 'dialog', init
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`panel glass ${drawer ? 'drawer' : 'dialog'} ${className ?? ''}`}
-        initial={drawer ? { x: '-105%' } : { opacity: 0, y: 48, scale: 0.94 }}
-        animate={drawer ? { x: 0 } : { opacity: 1, y: 0, scale: 1 }}
-        exit={drawer ? { x: '-105%' } : { opacity: 0, y: 32, scale: 0.96 }}
-        transition={{ type: 'spring', stiffness: 420, damping: drawer ? 40 : 32, mass: 0.9 }}
+        className={`panel glass ${variant} ${className ?? ''}`}
+        {...motionProps}
+        transition={{ type: 'spring', stiffness: 420, damping: drawer || sheet ? 40 : 32, mass: 0.9 }}
       >
-        <div className="panel-head">
+        {sheet && (
+          <div
+            className="sheet-grabber"
+            data-testid="sheet-grabber"
+            aria-hidden="true"
+            {...dragHandlers}
+          >
+            <span />
+          </div>
+        )}
+        <div className="panel-head" {...(sheet ? dragHandlers : {})}>
           <h2 id={titleId} className="panel-title">
             {title}
           </h2>
@@ -141,4 +158,50 @@ function ModalLayer({ onClose, title, children, footer, variant = 'dialog', init
       </motion.div>
     </div>
   );
+}
+
+/**
+ * Drag a bottom sheet down by its grabber/header. Pulled far (or flung) → closes; otherwise springs back.
+ * Uses pointer capture and the CSS `translate` property, which adds to (and never fights) the
+ * open/close animation's transform. Works the same with touch, mouse and pen in every engine.
+ */
+function useSheetDrag(panelRef: React.RefObject<HTMLDivElement | null>, close: () => void) {
+  const setOffset = (dy: number) => {
+    if (panelRef.current) panelRef.current.style.translate = dy ? `0 ${dy}px` : '';
+  };
+  return {
+    onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+      if ((e.target as HTMLElement).closest('button') || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      const id = e.pointerId;
+      const y0 = e.clientY;
+      let dy = 0;
+      const trail = [{ y: e.clientY, t: e.timeStamp }];
+      // Window listeners (not element capture): the gesture is followed even if the finger leaves the
+      // grabber or the element re-renders, and the release is never missed
+      const move = (ev: PointerEvent) => {
+        if (ev.pointerId !== id) return;
+        if (ev.cancelable) ev.preventDefault();
+        const raw = ev.clientY - y0;
+        // Free movement downward, a stiff rubber band upward
+        dy = raw > 0 ? raw : raw * 0.08;
+        trail.push({ y: ev.clientY, t: ev.timeStamp });
+        if (trail.length > 12) trail.shift();
+        setOffset(dy);
+      };
+      const up = (ev: PointerEvent) => {
+        if (ev.pointerId !== id) return;
+        window.removeEventListener('pointermove', move, true);
+        window.removeEventListener('pointerup', up, true);
+        window.removeEventListener('pointercancel', up, true);
+        const recent = trail.filter((p) => ev.timeStamp - p.t < 100);
+        const first = recent[0];
+        const v = first ? ((ev.clientY - first.y) / Math.max(ev.timeStamp - first.t, 8)) * 1000 : 0;
+        if (ev.type === 'pointerup' && (dy > 110 || (v > 700 && dy > 20))) close();
+        else animate(dy, 0, { type: 'spring', stiffness: 500, damping: 38, onUpdate: setOffset });
+      };
+      window.addEventListener('pointermove', move, true);
+      window.addEventListener('pointerup', up, true);
+      window.addEventListener('pointercancel', up, true);
+    },
+  };
 }

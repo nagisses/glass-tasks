@@ -10,7 +10,9 @@ import { Composer } from './components/Composer';
 import { HamburgerButton } from './components/HamburgerButton';
 import { ListFormModal } from './components/ListFormModal';
 import type { ListModalState } from './components/ListFormModal';
+import { usePullToRefresh } from './components/PullToRefresh';
 import { SideMenu } from './components/SideMenu';
+import { useToast } from './components/Toast';
 import { AppSkeleton } from './components/Skeleton';
 import { qk, useLists, useMe, useTaskDetail } from './hooks';
 import { ErrorState, NotFound } from './pages/common';
@@ -73,6 +75,18 @@ function Shell({ user, initialDraft, focusComposer }: { user: User; initialDraft
 
   const crumbs = useBreadcrumbs(listId, taskId);
 
+  // Pull the page down from the top to reload everything on screen
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [pullY, pullIndicator] = usePullToRefresh(async () => {
+    try {
+      await qc.refetchQueries({ type: 'active', predicate: (q) => q.queryKey[0] !== 'me' }, { throwOnError: true });
+      toast({ message: '更新しました' });
+    } catch {
+      toast({ message: '更新できませんでした', tone: 'error' });
+    }
+  });
+
   return (
     <div className="app">
       <header className="topbar glass">
@@ -80,7 +94,8 @@ function Shell({ user, initialDraft, focusComposer }: { user: User; initialDraft
         <Breadcrumbs items={crumbs} />
       </header>
 
-      <main className="page">
+      {pullIndicator}
+      <motion.main className="page" style={{ y: pullY }}>
         <AnimatePresence mode="wait" custom={direction} initial={false}>
           <motion.div
             key={location}
@@ -106,7 +121,7 @@ function Shell({ user, initialDraft, focusComposer }: { user: User; initialDraft
             </Switch>
           </motion.div>
         </AnimatePresence>
-      </main>
+      </motion.main>
 
       <Composer defaultListId={listId} initialDraft={initialDraft} focusOnMount={focusComposer} />
 

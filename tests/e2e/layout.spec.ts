@@ -46,7 +46,7 @@ test.describe('レイアウトとデザイン', () => {
       expect(box.height).toBeGreaterThanOrEqual(36);
       expect(box.width).toBeGreaterThanOrEqual(36);
     }
-    const input = (await page.getByRole('textbox', { name: 'タスクを追加' }).boundingBox())!;
+    const input = (await page.getByRole('combobox', { name: 'タスクを追加' }).boundingBox())!;
     expect(input.height).toBeGreaterThanOrEqual(40);
   });
 });
