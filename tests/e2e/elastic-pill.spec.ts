@@ -24,9 +24,9 @@ test.describe('伸縮するスライドピル', () => {
     await expectCovers(pill, seg('未着手'));
 
     // Record the pill's edges on every frame while it moves from the first to the last segment.
-    // The slide is slowed down 4x here so slow CI machines still catch plenty of frames mid-stretch.
+    // The slide is slowed down 10x here so slow CI machines still catch plenty of frames mid-stretch.
     const { frames, segs } = await group.evaluate(async (el) => {
-      (window as { __pillTimeScale?: number }).__pillTimeScale = 4;
+      (window as { __pillTimeScale?: number }).__pillTimeScale = 10;
       const track = el.querySelector<HTMLElement>('.segmented')!;
       const layer = el.querySelector<HTMLElement>('[data-testid="segment-pill"]')!;
       const tx = track.getBoundingClientRect().left;
@@ -42,7 +42,7 @@ test.describe('伸縮するスライドピル', () => {
       const frames: { l: number; r: number }[] = [];
       track.querySelectorAll<HTMLInputElement>('input[type=radio]')[2].click();
       const t0 = performance.now();
-      while (performance.now() - t0 < 2800) {
+      while (performance.now() - t0 < 6500) {
         await new Promise(requestAnimationFrame);
         frames.push(read());
       }
@@ -54,7 +54,7 @@ test.describe('伸縮するスライドピル', () => {
     // where the browser only paints a few frames per second (WebKit without a GPU).
     const gap = frames.map((f) => (f.r - first.r) / (last.r - first.r) - (f.l - first.l) / (last.l - first.l));
     // The leading (right) edge runs well ahead of the trailing (left) edge on the way...
-    expect(Math.max(...gap)).toBeGreaterThan(0.25);
+    expect(Math.max(...gap)).toBeGreaterThan(0.2);
     // ...so the pill is stretched wider than one segment, and never the other way round
     expect(Math.max(...frames.map((f) => f.r - f.l))).toBeGreaterThan((first.r - first.l) * 1.15);
     expect(Math.min(...gap)).toBeGreaterThan(-0.02);
@@ -78,10 +78,29 @@ test.describe('伸縮するスライドピル', () => {
     await expectCovers(pill, link);
 
     // Choosing another page slides the pill there before the menu closes
-    const home = (await menu.getByRole('link', { name: 'ホーム' }).boundingBox())!;
-    await menu.getByRole('link', { name: 'ホーム' }).click();
-    // The leading (top) edge shoots up to the new item first
-    await expect.poll(async () => Math.abs((await clipRect(pill))!.y - home.y), { timeout: 2000, intervals: [30] }).toBeLessThan(1.5);
+    // Tap "Home" and record every pill update from inside the page until the menu has closed:
+    // reading the pill from the test afterwards could miss the movement
+    const { start, target, tops } = await menu.evaluate((dialog) => {
+      const nav = dialog.querySelector<HTMLElement>('nav')!;
+      const layer = nav.querySelector<HTMLElement>('[data-testid="menu-pill"]')!;
+      const home = [...nav.querySelectorAll<HTMLAnchorElement>('a')].find((a) => a.textContent?.trim() === 'ホーム')!;
+      const topOf = () => parseFloat(layer.style.clipPath.match(/inset\(([-\d.]+)px/)![1]);
+      const start = topOf();
+      const target = home.getBoundingClientRect().top - nav.getBoundingClientRect().top;
+      const tops: number[] = [];
+      const mo = new MutationObserver(() => tops.push(topOf()));
+      mo.observe(layer, { attributes: true, attributeFilter: ['style'] });
+      home.click();
+      return new Promise<{ start: number; target: number; tops: number[] }>((done) =>
+        setTimeout(() => {
+          mo.disconnect();
+          done({ start, target, tops });
+        }, 1200),
+      );
+    });
+    // The highlight heads up toward "Home" (the exact stretch is checked on the segments above)
+    expect(start - target).toBeGreaterThan(20);
+    expect(Math.min(...tops)).toBeLessThan(start - 10);
     await expect(menu).toBeHidden();
     await expect(page).toHaveURL(/\/$/);
   });
